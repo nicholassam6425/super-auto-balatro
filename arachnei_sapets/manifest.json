@@ -1,0 +1,9 @@
+{
+    "id": "arachnei_sapets",
+    "name": "Super Auto PBalatro",
+    "version": "0.0.1",
+    "author": "arachnei",
+    "description": ["adds a lot of super auto pets related cards"],
+    "load_before": [],
+    "load_after": []
+}
