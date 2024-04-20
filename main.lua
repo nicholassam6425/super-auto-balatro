@@ -52,12 +52,12 @@ local function decorate()
     function Card:set_ability(center, initial, delay_sprites)
         card_set_ability(self, center, initial, delay_sprites)
         -- add mod specific parameters to jokers+playing cards
-        if self.config.center.set == "Joker" or self.config.center.set == "Default" then
+        if center.set ~= "Edition" and self.config.center.set == "Joker" or self.config.center.set == "Default" then
             if self.config.center.arachnei_sap_default then
                 self.ability.arachnei_sap = self.config.center.arachnei_sap_default
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             else
-                self.ability.arachnei_sap = {bonus_chips=0, bonus_mult=0, bonus_xmult=1}
+                self.ability.arachnei_sap = {bonus_chips=0, bonus_mult=0, bonus_xmult=1, xp=1}
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             end
         end
@@ -90,9 +90,10 @@ local function decorate()
     local card_generate_uibox_ability_table = Card.generate_UIBox_ability_table
     function Card:generate_UIBox_ability_table()
         local old_return = card_generate_uibox_ability_table(self)
-        if self.config.center.set == "Joker" or self.config.center.set == "Default" then
+        if self.config.center.set == "Joker" or self.config.center.set == "Default" and 
+        G.STATE ~= G.STATES.MENU and G.STATE ~= G.STATES.TUTORIAL then
             sap_stats_node = {name="SAP Stats"}
-            localize{type='other', key="sap_stats_loc", nodes=sap_stats_node, vars={self.ability.arachnei_sap.bonus_chips,self.ability.arachnei_sap.bonus_mult,self.ability.arachnei_sap.bonus_xmult}}
+            localize{type='other', key="sap_stats_loc", nodes=sap_stats_node, vars={self.ability.arachnei_sap.bonus_chips,self.ability.arachnei_sap.bonus_mult,self.ability.arachnei_sap.bonus_xmult,self.ability.arachnei_sap.xp}}
             table.insert(old_return.info, 1, sap_stats_node)
         end
         return old_return
@@ -101,7 +102,7 @@ local function decorate()
     local card_calculate_joker = Card.calculate_joker
     function Card:calculate_joker(context)
         local old_return = card_calculate_joker(self, context)
-        if self.ability.set == "Joker" and context.joker_main and context.cardarea == G.jokers and not context.before and not context.after then
+        if self.ability.set == "Joker" and context.joker_main and context.cardarea == G.jokers and not context.before and not context.after and not context.blueprint then
             if self.ability.arachnei_sap.bonus_chips > 0 then
                 hand_chips = mod_chips(hand_chips + self.ability.arachnei_sap.bonus_chips)
                 update_hand_text({delay = 0.2}, {chips = hand_chips})
@@ -129,6 +130,25 @@ local function decorate()
         end
         return old_return
     end
+
+    local card_add_to_deck = Card.add_to_deck
+    function Card:add_to_deck(from_debuff)
+        local old_return = card_add_to_deck(self, from_debuff)
+        if self.children.buy_button then -- adding to deck from shop
+            logger:info("buying card")
+            for i=1, #G.jokers.cards do
+                logger:info("comparing: ".. self.config.center.key .." to ".. G.jokers.cards[i].config.center.key)
+                if self.config.center.key == G.jokers.cards[i].config.center.key then -- duplicate bought
+                    G.jokers.cards[i].ability.arachnei_sap.xp = G.jokers.cards[i].ability.arachnei_sap.xp + 1
+                    self:juice_up(0.8, 0.8)
+                    self:start_dissolve({G.C.GOLD}, true)
+                    logger:info(self.config.center.key.." xp +1")
+                    break
+                end
+            end
+        end
+        return old_return
+    end
 end
 ---------------
 -- card data --
@@ -148,30 +168,19 @@ local tier_1_pets = {
         cost = 4,
         config = {extra={chips=1, mult=1}},
         calculate_joker_effect = function(card, context)
-            if card.ability.name == "Ant" and context.destroyed and context.cardarea == G.play then
+            if card.ability.name == "Ant" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.play then 
                 for i=1, #G.hand.cards do
                     ease_sap_chips(G.hand.cards[i], card.ability.extra.chips)
                     ease_sap_mult(G.hand.cards[i], card.ability.extra.mult)
                 end
             end
+            if card.ability.name == "Ant" and context.first_hand_drawn and not context.blueprint then
+                local eval = function() return G.GAME.current_round.hands_played == 0 end
+                juice_card_until(self, eval, true)
+            end
         end,
     }, 
     "j_beaver_arachnei",
-    {
-        id = "j_test_arachnei",
-        name = "giga omega pet of hell",
-        desc = {
-            "on battle start gain X100 mult"
-        },
-        cost = 0,
-        calculate_joker_effect = function(card, context)
-            if card.ability.name == "giga omega pet of hell" and context.setting_blind then
-                card.ability.arachnei_sap.bonus_xmult = card.ability.arachnei_sap.bonus_xmult + 100
-                card.ability.arachnei_sap.bonus_mult = card.ability.arachnei_sap.bonus_mult + 100
-                card.ability.arachnei_sap.bonus_chips = card.ability.arachnei_sap.bonus_chips + 100
-            end
-        end
-    },
     "j_cricket_arachnei", "j_duck_arachnei", "j_fish_arachnei", "j_horse_arachnei", 
     "j_mosquito_arachnei", "j_otter_arachnei", "j_pig_arachnei", "j_pigeon_arachnei", "j_baku_arachnei", "j_axehandle_hound_arachnei", 
     "j_barghest_arachnei", "j_tsuchinoko_arachnei", "j_murmel_arachnei", "j_alchemedes_arachnei", "j_warg_arachnei", "j_bunyip_arachnei", 
@@ -331,7 +340,8 @@ local function on_enable()
         text = {
             "Chips: {C:chips}+#1#",
             "Mult: {C:mult}+#2#",
-            "XMult: {X:mult,C:white}X#3#"
+            "XMult: {X:mult,C:white}X#3#",
+            "Experience: {C:purple}#4#"
         },
         name_parsed = {},
         text_parsed = {}
