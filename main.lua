@@ -20,27 +20,28 @@ end
 local function ease_sap_chips(card, value)
     card.ability.arachnei_sap.bonus_chips = card.ability.arachnei_sap.bonus_chips + value
     for i=1, #G.jokers.cards do
-        local eval = G.jokers.cards[k]:calculate_joker{ease_chips = {value=value}, individual=true, other_card=card}
+        logger:info("calculating ease chips for "..G.jokers.cards[i].ability.name)
+        local eval = G.jokers.cards[i]:calculate_joker{ease_chips = {value=value}, individual=true, other_card=card}
         if eval then
-            sap_effects(G.joker.cards[k], eval)
+            -- sap_effects(G.joker.cards[i], eval)
         end
     end
 end
 local function ease_sap_mult(card, value)
     card.ability.arachnei_sap.bonus_mult = card.ability.arachnei_sap.bonus_mult + value
     for i=1, #G.jokers.cards do
-        local eval = G.jokers.cards[k]:calculate_joker{ease_mult = {value=value}, individual=true, other_card=card}
+        local eval = G.jokers.cards[i]:calculate_joker{ease_mult = {value=value}, individual=true, other_card=card}
         if eval then
-            sap_effects(G.joker.cards[k], eval)
+            -- sap_effects(G.joker.cards[i], eval)
         end
     end
 end
 local function ease_sap_xmult(card, value)
     card.ability.arachnei_sap.bonus_xmult = card.ability.arachnei_sap.bonus_xmult + value
     for i=1, #G.jokers.cards do
-        local eval = G.jokers.cards[k]:calculate_joker{ease_xmult = {value=value}, individual=true, other_card=card}
+        local eval = G.jokers.cards[i]:calculate_joker{ease_xmult = {value=value}, individual=true, other_card=card}
         if eval then
-            sap_effects(G.joker.cards[k], eval)
+            -- sap_effects(G.joker.cards[i], eval)
         end
     end
 end
@@ -158,9 +159,9 @@ local tier_1_pets = {
         id = "j_ant_arachnei",
         name = "Ant",
         desc = {
-            "When this is destroyed, give",
-            "all cards in hand {C:chips}+#1#{} Chips",
-            "and {C:mult}+#2#{} Mult when scored"
+            "On the {C:attention}first hand{} played, a random",
+            "card in hand permanently gains",
+            "{C:chips}+#1#{} Chips and {C:mult}+#2#{} Mult when scored"
         },
         loc_vars = function(card)
             return {card.ability.extra.chips, card.ability.extra.mult}
@@ -168,15 +169,23 @@ local tier_1_pets = {
         cost = 4,
         config = {extra={chips=1, mult=1}},
         calculate_joker_effect = function(card, context)
-            if card.ability.name == "Ant" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.play then 
-                for i=1, #G.hand.cards do
-                    ease_sap_chips(G.hand.cards[i], card.ability.extra.chips)
-                    ease_sap_mult(G.hand.cards[i], card.ability.extra.mult)
-                end
+            if card.ability.name == "Ant" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.before then 
+                local upgrade_card = pseudorandom_element(G.hand.cards, pseudoseed(G.GAME.round..'sapets_ant_proc'))
+                ease_sap_chips(upgrade_card, card.ability.extra.chips)
+                card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
+                    message = localize('k_upgrade_ex'),
+                    colour = G.C.CHIPS
+                })
+                ease_sap_mult(upgrade_card, card.ability.extra.mult)
+                card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
+                    message = localize('k_upgrade_ex'),
+                    colour = G.C.MULT
+                })
+                
             end
             if card.ability.name == "Ant" and context.first_hand_drawn and not context.blueprint then
                 local eval = function() return G.GAME.current_round.hands_played == 0 end
-                juice_card_until(self, eval, true)
+                juice_card_until(card, eval, true)
             end
         end,
     }, 
