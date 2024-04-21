@@ -19,31 +19,30 @@ local function sap_effects(card, eval)
 end
 
 -- change "card"s SAP chips value by "value", then start an eval step
-local function ease_sap_chips(card, value)
+local function ease_sap_chips(card, value, from_eval)
     card.ability.arachnei_sap.chips = card.ability.arachnei_sap.chips + value
     for i=1, #G.jokers.cards do
-        logger:info("calculating ease chips for "..G.jokers.cards[i].ability.name)
-        local eval = G.jokers.cards[i]:calculate_joker{ease_chips = {value=value}, individual=true, other_card=card}
+        local eval = G.jokers.cards[i]:calculate_joker{ease_chips = {value=value}, individual=true, other_card=card, from_eval=from_eval}
         if eval then
             -- sap_effects(G.joker.cards[i], eval)
         end
     end
 end
 -- change "card"s SAP mult value by "value", then start an eval step
-local function ease_sap_mult(card, value)
+local function ease_sap_mult(card, value, from_eval)
     card.ability.arachnei_sap.mult = card.ability.arachnei_sap.mult + value
     for i=1, #G.jokers.cards do
-        local eval = G.jokers.cards[i]:calculate_joker{ease_mult = {value=value}, individual=true, other_card=card}
+        local eval = G.jokers.cards[i]:calculate_joker{ease_mult = {value=value}, individual=true, other_card=card, from_eval=from_eval}
         if eval then
             -- sap_effects(G.joker.cards[i], eval)
         end
     end
 end
 -- change "card"s SAP xmult value by "value", then start an eval step
-local function ease_sap_xmult(card, value)
+local function ease_sap_xmult(card, value, from_eval)
     card.ability.arachnei_sap.xmult = card.ability.arachnei_sap.xmult + value
     for i=1, #G.jokers.cards do
-        local eval = G.jokers.cards[i]:calculate_joker{ease_xmult = {value=value}, individual=true, other_card=card}
+        local eval = G.jokers.cards[i]:calculate_joker{ease_xmult = {value=value}, individual=true, other_card=card, from_eval=from_eval}
         if eval then
             -- sap_effects(G.joker.cards[i], eval)
         end
@@ -57,9 +56,6 @@ local function decorate()
     function Card:set_ability(center, initial, delay_sprites)
         -- if changing edition, save the old sap stats
         local old_sap_stats = self.ability and self.ability.arachnei_sap
-        if self.ability and self.ability.arachnei_sap then
-            logger:info("old sap stats found")
-        end
         
         card_set_ability(self, center, initial, delay_sprites)
 
@@ -87,7 +83,10 @@ local function decorate()
                 self.ability.arachnei_sap = self.config.center.config.base_stats
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             else
-                self.ability.arachnei_sap = {chips=0, mult=0, xmult=1, xp=1}
+                self.ability.arachnei_sap = {chips=0, mult=0, xmult=1}
+                if self.config.center.set == "Joker" then
+                    self.ability.arachnei_sap.xp = 1
+                end
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             end
         end
@@ -173,9 +172,7 @@ local function decorate()
         --------------------------------
         -- handling buying duplicates --
         if self.children.buy_button then -- adding to deck from shop
-            logger:info("buying card")
             for i=1, #G.jokers.cards do
-                logger:info("comparing: ".. self.config.center.key .." to ".. G.jokers.cards[i].config.center.key)
                 if self.config.center.key == G.jokers.cards[i].config.center.key then -- duplicate bought
                     G.jokers.cards[i].ability.arachnei_sap.xp = G.jokers.cards[i].ability.arachnei_sap.xp + 1
                     G.jokers.cards[i]:juice_up(0.8, 0.8)
@@ -186,6 +183,14 @@ local function decorate()
                             message = localize("k_level_up_ex")
                         })
                         play_sound('polychrome1')
+                        G.jokers.cards[i]:calculate_joker({self_level = true})
+                        for k=1, #G.jokers.cards do
+                            G.jokers.cards[k]:calculate_joker({ally_level = true, other_card = G.jokers.cards[i]})
+                        end
+                    end
+                    G.jokers.cards[i]:calculate_joker({gained_xp = true})
+                    for k=1, #G.jokers.cards do
+                        G.jokers.cards[k]:calculate_joker({ally_xp = true, other_card = G.jokers.cards[i]})
                     end
                     break
                 end
@@ -197,9 +202,9 @@ local function decorate()
 
     -- allow duplicates to spawn
     local misc_find_joker = find_joker
-    function find_joker(name, non_debuff) do
+    function find_joker(name, non_debuff)
         if name == "Showman" then
-            return true
+            return {true}
         end
         return misc_find_joker(name, non_debuff)
     end
@@ -244,12 +249,12 @@ local tier_1_pets = {
                 local level = math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3)
                 for i=1, level do
                     local upgrade_card = pseudorandom_element(G.hand.cards, pseudoseed(G.GAME.round..i..'sapets_ant_proc'))
-                    ease_sap_chips(upgrade_card, card.ability.extra.chips)
+                    ease_sap_chips(upgrade_card, card.ability.extra.chips, true)
                     card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
                         message = localize('k_upgrade_ex'),
                         colour = G.C.CHIPS
                     })
-                    ease_sap_mult(upgrade_card, card.ability.extra.mult)
+                    ease_sap_mult(upgrade_card, card.ability.extra.mult, true)
                     card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
                         message = localize('k_upgrade_ex'),
                         colour = G.C.MULT
@@ -270,8 +275,45 @@ local tier_1_pets = {
         desc = {
             "When you buy this card,",
             "give all cards in your deck",
-            "+1 Chips"
+            "+{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips"
         },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2/3"
+            end
+            return loc_vars
+        end,
+        calculate_joker_effect = function(card, context)
+            if card.ability.name == "Beaver" and context.buying_card and context.card.config.center.key == card.config.center.key then
+                if card.unique_val ~= context.card.unique_val then -- when owning a beaver and you buy a new one from the shop
+                    for i=1, #G.deck.cards do
+                        ease_sap_chips(G.deck.cards[i], math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3), true)
+                    end  
+                    context.card.ability.skip = true
+                end
+                if not card.ability.skip and card.unique_val == context.card.unique_val then -- if you dont own a beaver,
+                    if not card.ability.flipflop then -- context.buying_card is called twice, so flipflop to work once
+                        card.ability.flipflop = true
+                        for i=1, #G.deck.cards do
+                            ease_sap_chips(G.deck.cards[i], math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3), true)
+                        end 
+                    else
+                        card.ability.flipflop = false
+                    end
+                end
+            end
+        end
     },
     "j_cricket_arachnei", 
     "j_duck_arachnei", 
