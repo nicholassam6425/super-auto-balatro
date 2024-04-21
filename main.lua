@@ -7,6 +7,7 @@ local consumable = require("consumable")
 ----------------------
 
 -- card is the card that had its effect procced, eval is calculate_joker return
+-- i think im just gonna ditch this and have each card do card_eval_status_text on its own
 local function sap_effects(card, eval)
     if eval.message then
         local extra = {
@@ -17,8 +18,9 @@ local function sap_effects(card, eval)
     end
 end
 
+-- change "card"s SAP chips value by "value", then start an eval step
 local function ease_sap_chips(card, value)
-    card.ability.arachnei_sap.bonus_chips = card.ability.arachnei_sap.bonus_chips + value
+    card.ability.arachnei_sap.chips = card.ability.arachnei_sap.chips + value
     for i=1, #G.jokers.cards do
         logger:info("calculating ease chips for "..G.jokers.cards[i].ability.name)
         local eval = G.jokers.cards[i]:calculate_joker{ease_chips = {value=value}, individual=true, other_card=card}
@@ -27,8 +29,9 @@ local function ease_sap_chips(card, value)
         end
     end
 end
+-- change "card"s SAP mult value by "value", then start an eval step
 local function ease_sap_mult(card, value)
-    card.ability.arachnei_sap.bonus_mult = card.ability.arachnei_sap.bonus_mult + value
+    card.ability.arachnei_sap.mult = card.ability.arachnei_sap.mult + value
     for i=1, #G.jokers.cards do
         local eval = G.jokers.cards[i]:calculate_joker{ease_mult = {value=value}, individual=true, other_card=card}
         if eval then
@@ -36,8 +39,9 @@ local function ease_sap_mult(card, value)
         end
     end
 end
+-- change "card"s SAP xmult value by "value", then start an eval step
 local function ease_sap_xmult(card, value)
-    card.ability.arachnei_sap.bonus_xmult = card.ability.arachnei_sap.bonus_xmult + value
+    card.ability.arachnei_sap.xmult = card.ability.arachnei_sap.xmult + value
     for i=1, #G.jokers.cards do
         local eval = G.jokers.cards[i]:calculate_joker{ease_xmult = {value=value}, individual=true, other_card=card}
         if eval then
@@ -51,50 +55,78 @@ end
 local function decorate()
     local card_set_ability = Card.set_ability
     function Card:set_ability(center, initial, delay_sprites)
+        -- if changing edition, save the old sap stats
+        local old_sap_stats = self.ability and self.ability.arachnei_sap
+        if self.ability and self.ability.arachnei_sap then
+            logger:info("old sap stats found")
+        end
+        
         card_set_ability(self, center, initial, delay_sprites)
-        -- add mod specific parameters to jokers+playing cards
-        if center.set ~= "Edition" and self.config.center.set == "Joker" or self.config.center.set == "Default" then
-            if self.config.center.arachnei_sap_default then
-                self.ability.arachnei_sap = self.config.center.arachnei_sap_default
+
+        -- if set_ability is being called for changing the edition of a card, use old_sap_stats instead
+        if old_sap_stats then
+            self.ability.arachnei_sap = old_sap_stats
+        elseif center.set ~= "Enhanced" and (self.config.center.set == "Joker" or self.config.center.set == "Default") then
+            -- not sure if this section ever gets reached, but gonna keep it since it MIGHT break something on removal
+            if self.config.center.config.base_stats then
+                self.ability.arachnei_sap = self.config.center.config.base_stats
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             else
-                self.ability.arachnei_sap = {bonus_chips=0, bonus_mult=0, bonus_xmult=1, xp=1}
+                self.ability.arachnei_sap = {chips=0, mult=0, xmult=1, xp=1}
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             end
         end
     end
 
+    -- add mod specific parameters to jokers+playing cards
+    local card_init = Card.init
+    function Card:init(X, Y, W, H, card, center, params)
+        card_init(self, X, Y, W, H, card, center, params)
+        if self.config.center.set == "Joker" or self.config.center.set == "Default" then
+            if self.config.center.config.base_stats then
+                self.ability.arachnei_sap = self.config.center.config.base_stats
+                self.config.center.arachnei_sap = self.ability.arachnei_sap
+            else
+                self.ability.arachnei_sap = {chips=0, mult=0, xmult=1, xp=1}
+                self.config.center.arachnei_sap = self.ability.arachnei_sap
+            end
+        end
+    end
+
+    ----------------------------
+    -- playing card sap stats --
     local card_get_chip_mult = Card.get_chip_mult
     function Card:get_chip_mult()
         local old_return = card_get_chip_mult(self)
-        old_return = old_return + self.ability.arachnei_sap.bonus_mult
+        old_return = old_return + self.ability.arachnei_sap.mult
         return old_return
     end
-
     local card_get_chip_x_mult = Card.get_chip_x_mult
     function Card:get_chip_x_mult(context)
         local old_return = card_get_chip_x_mult(self, context)
-        old_return = old_return + self.ability.arachnei_sap.bonus_xmult
+        old_return = old_return + self.ability.arachnei_sap.xmult
         if old_return == 1 then
             old_return = 0
         end
         return old_return
     end
-
     local card_get_chip_bonus = Card.get_chip_bonus
     function Card:get_chip_bonus()
         local old_return = card_get_chip_bonus(self)
-        old_return = old_return + self.ability.arachnei_sap.bonus_chips
+        old_return = old_return + self.ability.arachnei_sap.chips
         return old_return
     end
+    ----------------------------
 
     local card_generate_uibox_ability_table = Card.generate_UIBox_ability_table
     function Card:generate_UIBox_ability_table()
         local old_return = card_generate_uibox_ability_table(self)
-        if self.config.center.set == "Joker" or self.config.center.set == "Default" and 
+        -- if hovered card is a joker or a playing card,
+        -- prepend SAP tooltip to info
+        if self.config.center.set == "Joker" or self.config.center.set == "Default" or self.config.center.set == "Enhanced" and 
         G.STATE ~= G.STATES.MENU and G.STATE ~= G.STATES.TUTORIAL then
             sap_stats_node = {name="SAP Stats"}
-            localize{type='other', key="sap_stats_loc", nodes=sap_stats_node, vars={self.ability.arachnei_sap.bonus_chips,self.ability.arachnei_sap.bonus_mult,self.ability.arachnei_sap.bonus_xmult,self.ability.arachnei_sap.xp}}
+            localize{type='other', key="sap_stats_loc", nodes=sap_stats_node, vars={self.ability.arachnei_sap.chips,self.ability.arachnei_sap.mult,self.ability.arachnei_sap.xmult,self.ability.arachnei_sap.xp}}
             table.insert(old_return.info, 1, sap_stats_node)
         end
         return old_return
@@ -104,30 +136,33 @@ local function decorate()
     function Card:calculate_joker(context)
         local old_return = card_calculate_joker(self, context)
         if self.ability.set == "Joker" and context.joker_main and context.cardarea == G.jokers and not context.before and not context.after and not context.blueprint then
-            if self.ability.arachnei_sap.bonus_chips > 0 then
-                hand_chips = mod_chips(hand_chips + self.ability.arachnei_sap.bonus_chips)
+            -------------------------
+            -- calculate SAP stats --
+            if self.ability.arachnei_sap.chips > 0 then
+                hand_chips = mod_chips(hand_chips + self.ability.arachnei_sap.chips)
                 update_hand_text({delay = 0.2}, {chips = hand_chips})
                 card_eval_status_text(self, 'extra', nil, nil, nil, {
-                    message = localize{type='variable', key='a_chips', vars = {self.ability.arachnei_sap.bonus_chips}},
+                    message = localize{type='variable', key='a_chips', vars = {self.ability.arachnei_sap.chips}},
                     colour = G.C.CHIPS
                 })
             end
-            if self.ability.arachnei_sap.bonus_mult > 0 then
-                mult = mod_mult(self.ability.arachnei_sap.bonus_mult + mult)
+            if self.ability.arachnei_sap.mult > 0 then
+                mult = mod_mult(self.ability.arachnei_sap.mult + mult)
                 update_hand_text({delay = 0.2}, {mult = mult})
                 card_eval_status_text(self, 'extra', nil, nil, nil, {
-                    message = localize{type='variable', key='a_mult', vars = {self.ability.arachnei_sap.bonus_mult}},
+                    message = localize{type='variable', key='a_mult', vars = {self.ability.arachnei_sap.mult}},
                     colour = G.C.MULT
                 })
             end
-            if self.ability.arachnei_sap.bonus_xmult ~= 1 then
-                mult = mod_mult(mult * self.ability.arachnei_sap.bonus_xmult)
+            if self.ability.arachnei_sap.xmult ~= 1 then
+                mult = mod_mult(mult * self.ability.arachnei_sap.xmult)
                 update_hand_text({delay = 0.2}, {mult = mult})
                 card_eval_status_text(self, 'extra', nil, nil, nil, {
-                    message = localize{type='variable', key='a_xmult', vars = {self.ability.arachnei_sap.bonus_xmult}},
+                    message = localize{type='variable', key='a_xmult', vars = {self.ability.arachnei_sap.xmult}},
                     colour = G.C.XMULT
                 })
             end
+            -------------------------
         end
         return old_return
     end
@@ -135,63 +170,115 @@ local function decorate()
     local card_add_to_deck = Card.add_to_deck
     function Card:add_to_deck(from_debuff)
         local old_return = card_add_to_deck(self, from_debuff)
+        --------------------------------
+        -- handling buying duplicates --
         if self.children.buy_button then -- adding to deck from shop
             logger:info("buying card")
             for i=1, #G.jokers.cards do
                 logger:info("comparing: ".. self.config.center.key .." to ".. G.jokers.cards[i].config.center.key)
                 if self.config.center.key == G.jokers.cards[i].config.center.key then -- duplicate bought
                     G.jokers.cards[i].ability.arachnei_sap.xp = G.jokers.cards[i].ability.arachnei_sap.xp + 1
+                    G.jokers.cards[i]:juice_up(0.8, 0.8)
                     self:juice_up(0.8, 0.8)
                     self:start_dissolve({G.C.GOLD}, true)
-                    logger:info(self.config.center.key.." xp +1")
+                    if G.jokers.cards[i].ability.arachnei_sap.xp == 3 or G.jokers.cards[i].ability.arachnei_sap.xp == 6 then
+                        card_eval_status_text(G.jokers.cards[i], 'extra', nil, nil, nil, {
+                            message = localize("k_level_up_ex")
+                        })
+                        play_sound('polychrome1')
+                    end
                     break
                 end
             end
         end
+        --------------------------------
         return old_return
+    end
+
+    -- allow duplicates to spawn
+    local misc_find_joker = find_joker
+    function find_joker(name, non_debuff) do
+        if name == "Showman" then
+            return true
+        end
+        return misc_find_joker(name, non_debuff)
     end
 end
 ---------------
 -- card data --
 ---------------
+-- level breakpoints --
 local tier_1_pets = {
     {
         id = "j_ant_arachnei",
         name = "Ant",
         desc = {
-            "On the {C:attention}first hand{} played, a random",
-            "card in hand permanently gains",
-            "{C:chips}+#1#{} Chips and {C:mult}+#2#{} Mult when scored"
+            "On the {C:attention}first hand{} played, {C:inactive}#3#{}{C:attention}#4#{}{C:inactive}#5#{}",
+            "random cards in hand permanently gains",
+            "{C:chips}+#1#{} Chips and {C:mult}+#2#{} Mult"
         },
         loc_vars = function(card)
-            return {card.ability.extra.chips, card.ability.extra.mult}
+            local loc_vars = {card.ability.extra.chips, card.ability.extra.mult}
+            -- level vars
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[3] = "1/2/"
+                loc_vars[4] = "3"
+                loc_vars[5] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[3] = "1/"
+                loc_vars[4] = "2"
+                loc_vars[5] = "/3"
+            else                                            -- level 1
+                loc_vars[3] = ""
+                loc_vars[4] = "1"
+                loc_vars[5] = "/2/3"
+            end
+            return loc_vars
         end,
         cost = 4,
+        rarity = 1,
         config = {extra={chips=1, mult=1}},
         calculate_joker_effect = function(card, context)
+            -- first hand played effect
             if card.ability.name == "Ant" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.before then 
-                local upgrade_card = pseudorandom_element(G.hand.cards, pseudoseed(G.GAME.round..'sapets_ant_proc'))
-                ease_sap_chips(upgrade_card, card.ability.extra.chips)
-                card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
-                    message = localize('k_upgrade_ex'),
-                    colour = G.C.CHIPS
-                })
-                ease_sap_mult(upgrade_card, card.ability.extra.mult)
-                card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
-                    message = localize('k_upgrade_ex'),
-                    colour = G.C.MULT
-                })
-                
+                local level = math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3)
+                for i=1, level do
+                    local upgrade_card = pseudorandom_element(G.hand.cards, pseudoseed(G.GAME.round..i..'sapets_ant_proc'))
+                    ease_sap_chips(upgrade_card, card.ability.extra.chips)
+                    card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
+                        message = localize('k_upgrade_ex'),
+                        colour = G.C.CHIPS
+                    })
+                    ease_sap_mult(upgrade_card, card.ability.extra.mult)
+                    card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
+                        message = localize('k_upgrade_ex'),
+                        colour = G.C.MULT
+                    })
+                end
             end
+            -- visual effect for first hand
             if card.ability.name == "Ant" and context.first_hand_drawn and not context.blueprint then
                 local eval = function() return G.GAME.current_round.hands_played == 0 end
                 juice_card_until(card, eval, true)
             end
         end,
+        yes_pool_flag = nil,
     }, 
-    "j_beaver_arachnei",
-    "j_cricket_arachnei", "j_duck_arachnei", "j_fish_arachnei", "j_horse_arachnei", 
-    "j_mosquito_arachnei", "j_otter_arachnei", "j_pig_arachnei", "j_pigeon_arachnei", "j_baku_arachnei", "j_axehandle_hound_arachnei", 
+    {
+        id = "j_beaver_arachnei",
+        name = "Beaver",
+        desc = {
+            "When you buy this card,",
+            "give all cards in your deck",
+            "+1 Chips"
+        },
+    },
+    "j_cricket_arachnei", 
+    "j_duck_arachnei", 
+    "j_fish_arachnei", 
+    "j_horse_arachnei", 
+    "j_mosquito_arachnei", 
+    "j_otter_arachnei", "j_pig_arachnei", "j_pigeon_arachnei", "j_baku_arachnei", "j_axehandle_hound_arachnei", 
     "j_barghest_arachnei", "j_tsuchinoko_arachnei", "j_murmel_arachnei", "j_alchemedes_arachnei", "j_warg_arachnei", "j_bunyip_arachnei", 
     "j_sneaky_egg_arachnei", "j_cuddle_toad_arachnei", "j_basilisk_arachnei", "j_bulldog_arachnei", "j_chipmunk_arachnei", "j_groundhog_arachnei", 
     "j_cone_snail_arachnei", "j_goose_arachnei", "j_pied_tamarin_arachnei", "j_opossum_arachnei", "j_silkmoth_arachnei", "j_magpie_arachnei", 
