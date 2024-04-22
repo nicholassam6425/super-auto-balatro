@@ -2,10 +2,13 @@
 local joker = require("joker")
 local consumable = require("consumable")
 
+-- configs
+local configs = {
+    
+}
 ----------------------
 -- helper functions --
 ----------------------
-
 -- card is the card that had its effect procced, eval is calculate_joker return
 -- i think im just gonna ditch this and have each card do card_eval_status_text on its own
 local function sap_effects(card, eval)
@@ -45,6 +48,62 @@ local function ease_sap_xmult(card, value, from_eval)
         local eval = G.jokers.cards[i]:calculate_joker{ease_xmult = {value=value}, individual=true, other_card=card, from_eval=from_eval}
         if eval then
             -- sap_effects(G.joker.cards[i], eval)
+        end
+    end
+end
+local function ease_sap_xp(card, value, from_eval)
+    local old_xp = card.ability.arachnei_sap.xp
+    card.ability.arachnei_sap.xp = card.ability.arachnei_sap.xp + value
+    local new_xp = card.ability.arachnei_sap.xp
+    if (old_xp < 3 and new_xp >= 3) then
+        card_eval_status_text(card, 'extra', nil, nil, nil, {
+            message = localize("k_level_up_ex")
+        })
+        play_sound('polychrome1')
+        card:calculate_joker({self_level = true})
+        for i=1, #G.jokers.cards do
+            G.jokers.cards[i]:calculate_joker({ally_level = true, other_card = card})
+        end
+    end
+    if (old_xp < 6 and new_xp >= 6) then
+        card_eval_status_text(card, 'extra', nil, nil, nil, {
+            message = localize("k_level_up_ex")
+        })
+        play_sound('polychrome1')
+        card:calculate_joker({self_level = true})
+        for i=1, #G.jokers.cards do
+            G.jokers.cards[i]:calculate_joker({ally_level = true, other_card = card})
+        end
+    end
+    card:calculate_joker({gained_xp = true})
+    for i=1, #G.jokers.cards do
+        G.jokers.cards[i]:calculate_joker({ally_xp = true, other_card = G.jokers.cards[i]})
+    end
+end
+----------------------
+-- button callbacks --
+----------------------
+G.FUNCS.can_absorb_card = function(e)
+    for i=1, #G.jokers.cards do
+        if G.jokers.cards[i].unique_val == e.config.ref_table.unique_val then
+            if G.jokers.cards[i+1] and G.jokers.cards[i+1].config.center.key == e.config.ref_table.config.center.key then
+                e.config.colour = G.C.PURPLE
+                e.config.button = 'absorb_card'
+            else
+                e.config.colour = G.C.UI.BACKGROUND_INACTIVE
+                e.config.button = nil
+            end
+            break
+        end
+    end
+end
+G.FUNCS.absorb_card = function(e)
+    local card = e.config.ref_table
+    for i=1, #G.jokers.cards do
+        if G.jokers.cards[i].unique_val == card.unique_val then
+            ease_sap_xp(card, G.jokers.cards[i+1].ability.arachnei_sap.xp)
+            card:juice_up(0.8, 0.8)
+            G.jokers.cards[i+1]:start_dissolve({G.C.GOLD}, true)
         end
     end
 end
@@ -171,31 +230,32 @@ local function decorate()
         local old_return = card_add_to_deck(self, from_debuff)
         --------------------------------
         -- handling buying duplicates --
-        if self.children.buy_button then -- adding to deck from shop
-            for i=1, #G.jokers.cards do
-                if self.config.center.key == G.jokers.cards[i].config.center.key then -- duplicate bought
-                    G.jokers.cards[i].ability.arachnei_sap.xp = G.jokers.cards[i].ability.arachnei_sap.xp + 1
-                    G.jokers.cards[i]:juice_up(0.8, 0.8)
-                    self:juice_up(0.8, 0.8)
-                    self:start_dissolve({G.C.GOLD}, true)
-                    if G.jokers.cards[i].ability.arachnei_sap.xp == 3 or G.jokers.cards[i].ability.arachnei_sap.xp == 6 then
-                        card_eval_status_text(G.jokers.cards[i], 'extra', nil, nil, nil, {
-                            message = localize("k_level_up_ex")
-                        })
-                        play_sound('polychrome1')
-                        G.jokers.cards[i]:calculate_joker({self_level = true})
-                        for k=1, #G.jokers.cards do
-                            G.jokers.cards[k]:calculate_joker({ally_level = true, other_card = G.jokers.cards[i]})
-                        end
-                    end
-                    G.jokers.cards[i]:calculate_joker({gained_xp = true})
-                    for k=1, #G.jokers.cards do
-                        G.jokers.cards[k]:calculate_joker({ally_xp = true, other_card = G.jokers.cards[i]})
-                    end
-                    break
-                end
-            end
-        end
+        -- depreciated, using absorb button now
+        -- if self.children.buy_button then -- adding to deck from shop
+        --     for i=1, #G.jokers.cards do
+        --         if self.config.center.key == G.jokers.cards[i].config.center.key then -- duplicate bought
+        --             G.jokers.cards[i].ability.arachnei_sap.xp = G.jokers.cards[i].ability.arachnei_sap.xp + 1
+        --             G.jokers.cards[i]:juice_up(0.8, 0.8)
+        --             self:juice_up(0.8, 0.8)
+        --             self:start_dissolve({G.C.GOLD}, true)
+        --             if G.jokers.cards[i].ability.arachnei_sap.xp == 3 or G.jokers.cards[i].ability.arachnei_sap.xp == 6 then
+        --                 card_eval_status_text(G.jokers.cards[i], 'extra', nil, nil, nil, {
+        --                     message = localize("k_level_up_ex")
+        --                 })
+        --                 play_sound('polychrome1')
+        --                 G.jokers.cards[i]:calculate_joker({self_level = true})
+        --                 for k=1, #G.jokers.cards do
+        --                     G.jokers.cards[k]:calculate_joker({ally_level = true, other_card = G.jokers.cards[i]})
+        --                 end
+        --             end
+        --             G.jokers.cards[i]:calculate_joker({gained_xp = true})
+        --             for k=1, #G.jokers.cards do
+        --                 G.jokers.cards[k]:calculate_joker({ally_xp = true, other_card = G.jokers.cards[i]})
+        --             end
+        --             break
+        --         end
+        --     end
+        -- end
         --------------------------------
         return old_return
     end
@@ -207,6 +267,22 @@ local function decorate()
             return {true}
         end
         return misc_find_joker(name, non_debuff)
+    end
+
+    local uidef_use_and_sell_buttons = G.UIDEF.use_and_sell_buttons
+    function G.UIDEF.use_and_sell_buttons(card)
+        local old_return = uidef_use_and_sell_buttons(card)
+        if card.area and card.area.config.type == 'joker' then
+            table.insert(old_return.nodes[1].nodes, {n=G.UIT.R, config={align='cl'}, nodes={
+                {n=G.UIT.C, config={align = "cr"}, nodes={
+                    {n=G.UIT.C, config={ref_table = card, align = "cr",padding = 0.1, r=0.08, minw = 1.25, hover = true, shadow = true, colour = G.C.UI.BACKGROUND_INACTIVE, one_press = true, button = 'sell_card', func = 'can_absorb_card'}, nodes={
+                        {n=G.UIT.B, config = {w=0.1,h=0.6}},
+                        {n=G.UIT.T, config={text = "Absorb",colour = G.C.UI.TEXT_LIGHT, scale = 0.55, shadow = true}}
+                    }}
+                }}
+            }})
+        end
+        return old_return
     end
 end
 ---------------
