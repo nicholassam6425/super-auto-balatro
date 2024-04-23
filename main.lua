@@ -1,10 +1,11 @@
 -- balamod apis
 local joker = require("joker")
 local consumable = require("consumable")
+local utils = require("utils")
 
 -- configs
 local configs = {
-    
+    remove_other_jokers = false,
 }
 ----------------------
 -- helper functions --
@@ -60,9 +61,8 @@ local function ease_sap_xp(card, value, from_eval)
             message = localize("k_level_up_ex")
         })
         play_sound('polychrome1')
-        card:calculate_joker({self_level = true})
         for i=1, #G.jokers.cards do
-            G.jokers.cards[i]:calculate_joker({ally_level = true, other_card = card})
+            G.jokers.cards[i]:calculate_joker({level_up = true, other_card = card})
         end
     end
     if (old_xp < 6 and new_xp >= 6) then
@@ -70,14 +70,12 @@ local function ease_sap_xp(card, value, from_eval)
             message = localize("k_level_up_ex")
         })
         play_sound('polychrome1')
-        card:calculate_joker({self_level = true})
         for i=1, #G.jokers.cards do
-            G.jokers.cards[i]:calculate_joker({ally_level = true, other_card = card})
+            G.jokers.cards[i]:calculate_joker({level_up = true, other_card = card})
         end
     end
-    card:calculate_joker({gained_xp = true})
     for i=1, #G.jokers.cards do
-        G.jokers.cards[i]:calculate_joker({ally_xp = true, other_card = G.jokers.cards[i]})
+        G.jokers.cards[i]:calculate_joker({xp_gained = true, other_card = G.jokers.cards[i]})
     end
 end
 ----------------------
@@ -101,9 +99,12 @@ G.FUNCS.absorb_card = function(e)
     local card = e.config.ref_table
     for i=1, #G.jokers.cards do
         if G.jokers.cards[i].unique_val == card.unique_val then
-            ease_sap_xp(card, G.jokers.cards[i+1].ability.arachnei_sap.xp)
             card:juice_up(0.8, 0.8)
             G.jokers.cards[i+1]:start_dissolve({G.C.GOLD}, true)
+            local xp_gain = G.jokers.cards[i+1].ability.arachnei_sap.xp
+            G.jokers:remove_card(G.jokers.cards[i+1])
+            ease_sap_xp(card, xp_gain)
+            break
         end
     end
 end
@@ -228,9 +229,9 @@ local function decorate()
     local card_add_to_deck = Card.add_to_deck
     function Card:add_to_deck(from_debuff)
         local old_return = card_add_to_deck(self, from_debuff)
+        -- depreciated, using absorb button now ----------------------------- read this line
         --------------------------------
         -- handling buying duplicates --
-        -- depreciated, using absorb button now
         -- if self.children.buy_button then -- adding to deck from shop
         --     for i=1, #G.jokers.cards do
         --         if self.config.center.key == G.jokers.cards[i].config.center.key then -- duplicate bought
@@ -283,6 +284,14 @@ local function decorate()
             }})
         end
         return old_return
+    end
+
+    local game_start_run = Game.start_run
+    function Game:start_run(args)
+        game_start_run(self, args)
+        if not G.GAME.arachnei_sap then
+            G.GAME.arachnei_sap = {permanent_shop_buff={chips=0, mult=0, xmult=0}}
+        end
     end
 end
 ---------------
@@ -349,9 +358,9 @@ local tier_1_pets = {
         id = "j_beaver_arachnei",
         name = "Beaver",
         desc = {
-            "When you buy this card,",
-            "give all cards in your deck",
-            "+{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips"
+            "Whenever you buy a {C:attention}Beaver{},",
+            "including this one, give all cards",
+            "in your deck +{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips"
         },
         loc_vars = function(card)
             loc_vars = {}
@@ -370,39 +379,129 @@ local tier_1_pets = {
             end
             return loc_vars
         end,
-        calculate_joker_effect = function(card, context)
-            if card.ability.name == "Beaver" and context.buying_card and context.card.config.center.key == card.config.center.key then
-                if card.unique_val ~= context.card.unique_val then -- when owning a beaver and you buy a new one from the shop
-                    for i=1, #G.deck.cards do
-                        ease_sap_chips(G.deck.cards[i], math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3), true)
-                    end  
-                    context.card.ability.skip = true
-                end
-                if not card.ability.skip and card.unique_val == context.card.unique_val then -- if you dont own a beaver,
-                    if not card.ability.flipflop then -- context.buying_card is called twice, so flipflop to work once
-                        card.ability.flipflop = true
-                        for i=1, #G.deck.cards do
-                            ease_sap_chips(G.deck.cards[i], math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3), true)
-                        end 
-                    else
-                        card.ability.flipflop = false
+        cost = 4,
+        rarity = 1,
+        config = {extra={chips=1}},
+        add_to_deck_effect = function(card, from_debuff)
+            if card.ability.name == "Beaver" then
+                for i=1, #G.jokers.cards do
+                    if G.jokers.cards[i].config.center.key == "j_beaver_arachnei" then
+                        G.jokers.cards[i]:juice_up(0.8, 0.8)
+                        card_eval_status_text(G.jokers.cards[i], 'extra', nil, nil, nil, {
+                            message = localize('k_upgrade_ex'),
+                            colour = G.C.CHIPS
+                        })
+                        for k=1, #G.deck.cards do
+                            ease_sap_chips(G.deck.cards[k], G.jokers.cards[i].ability.extra.chips * math.min(math.floor(G.jokers.cards[i].ability.arachnei_sap.xp/3)+1, 3))
+                        end
                     end
+                end
+                card:juice_up(0.8, 0.8)
+                card_eval_status_text(card, 'extra', nil, nil, nil, {
+                    message = localize('k_upgrade_ex'),
+                    colour = G.C.CHIPS
+                })
+                for k=1, #G.deck.cards do
+                    ease_sap_chips(G.deck.cards[k], card.ability.extra.chips * math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3))
                 end
             end
         end
     },
     "j_cricket_arachnei", 
     "j_duck_arachnei", 
-    "j_fish_arachnei", 
+    {
+        id = "j_fish_arachnei",
+        name = "Fish",
+        desc = {
+            "Whenever this levels up,",
+            "give another Joker +{C:inactive}#1#{}{C:mult}#2#{}{C:inactive}#3#{} Mult"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2/3"
+            end
+            return loc_vars
+        end,
+        cost = 4,
+        rarity = 1,
+        config = {extra={mult=1}},
+        calculate_joker_effect = function(card, context)
+            if context.level_up and context.other_card.unique_val == card.unique_val then
+                local candidates = {}
+                for i=1, #G.jokers.cards do
+                    if card.unique_val ~= G.jokers.cards[i].unique_val then
+                        table.insert(candidates, i)
+                    end
+                end
+                logger:info("a")
+                if #candidates == 0 then
+                    for i=1, #G.jokers.cards do
+                        table.insert(candidates, i)
+                    end
+                end
+                logger:info("b")
+                local chosen = pseudorandom_element(candidates, pseudoseed("arachneifishproc"..G.GAME.round))
+                logger:info("chosen: ".. chosen)
+                ease_sap_mult(G.jokers.cards[chosen], card.ability.extra.mult * math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3), true)
+            end
+        end,
+    }, 
     "j_horse_arachnei", 
     "j_mosquito_arachnei", 
-    "j_otter_arachnei", "j_pig_arachnei", "j_pigeon_arachnei", "j_baku_arachnei", "j_axehandle_hound_arachnei", 
-    "j_barghest_arachnei", "j_tsuchinoko_arachnei", "j_murmel_arachnei", "j_alchemedes_arachnei", "j_warg_arachnei", "j_bunyip_arachnei", 
-    "j_sneaky_egg_arachnei", "j_cuddle_toad_arachnei", "j_basilisk_arachnei", "j_bulldog_arachnei", "j_chipmunk_arachnei", "j_groundhog_arachnei", 
-    "j_cone_snail_arachnei", "j_goose_arachnei", "j_pied_tamarin_arachnei", "j_opossum_arachnei", "j_silkmoth_arachnei", "j_magpie_arachnei", 
-    "j_cockroach_arachnei", "j_duckling_arachnei", "j_frog_arachnei", "j_hummingbird_arachnei", "j_kiwi_arachnei", "j_marmoset_arachnei", 
-    "j_mouse_arachnei", "j_pillbug_arachnei", "j_seahorse_arachnei", "j_beetle_arachnei", "j_blue_bird_arachnei", "j_chinchilla_arachnei", 
-    "j_ferret_arachnei", "j_gecko_arachnei", "j_ladybug_arachnei", "j_moth_arachnei", "j_frilled_dragon_arachnei", "j_sloth_arachnei",
+    "j_otter_arachnei", 
+    "j_pig_arachnei", 
+    "j_pigeon_arachnei", 
+    "j_baku_arachnei", 
+    "j_axehandle_hound_arachnei", 
+    "j_barghest_arachnei", 
+    "j_tsuchinoko_arachnei", 
+    "j_murmel_arachnei", 
+    "j_alchemedes_arachnei", 
+    "j_warg_arachnei", 
+    "j_bunyip_arachnei", 
+    "j_sneaky_egg_arachnei", 
+    "j_cuddle_toad_arachnei", 
+    {
+        id="j_basilisk_arachnei"
+    }, 
+    "j_bulldog_arachnei", 
+    "j_chipmunk_arachnei", 
+    "j_groundhog_arachnei", 
+    "j_cone_snail_arachnei", 
+    "j_goose_arachnei", 
+    "j_pied_tamarin_arachnei", 
+    "j_opossum_arachnei", 
+    "j_silkmoth_arachnei", 
+    "j_magpie_arachnei", 
+    "j_cockroach_arachnei", 
+    "j_duckling_arachnei", 
+    "j_frog_arachnei", 
+    "j_hummingbird_arachnei", 
+    "j_kiwi_arachnei", 
+    "j_marmoset_arachnei", 
+    "j_mouse_arachnei", 
+    "j_pillbug_arachnei", 
+    "j_seahorse_arachnei", 
+    "j_beetle_arachnei", 
+    "j_blue_bird_arachnei", 
+    "j_chinchilla_arachnei", 
+    "j_ferret_arachnei", 
+    "j_gecko_arachnei", 
+    "j_ladybug_arachnei", 
+    "j_moth_arachnei", 
+    "j_frilled_dragon_arachnei", 
+    "j_sloth_arachnei",
 }
 local tier_2_pets = {
     "j_crab_arachnei", "j_flamingo_arachnei", "j_hedgehog_arachnei", "j_kangaroo_arachnei", "j_peacock_arachnei", "j_rat_arachnei", 
@@ -578,6 +677,8 @@ local function on_enable()
                 else
                     consumable.add(card_data)
                 end
+            elseif type(card_data) == "string" then
+                -- logger:info(card_data.." unimplemented. skipping...")
             end
         end
     end
