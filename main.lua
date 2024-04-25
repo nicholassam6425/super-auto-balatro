@@ -7,20 +7,10 @@ local utils = require("utils")
 local configs = {
     remove_other_jokers = false,
 }
+
 ----------------------
 -- helper functions --
 ----------------------
--- card is the card that had its effect procced, eval is calculate_joker return
--- i think im just gonna ditch this and have each card do card_eval_status_text on its own
-local function sap_effects(card, eval)
-    if eval.message then
-        local extra = {
-            message = eval.message,
-            colour = eval.colour
-        }
-        card_eval_status_text(card, 'extra', nil, nil, nil, extra)
-    end
-end
 
 -- change "card"s SAP chips value by "value", then start an eval step
 local function ease_sap_chips(card, value, from_eval)
@@ -78,6 +68,20 @@ local function ease_sap_xp(card, value, from_eval)
         G.jokers.cards[i]:calculate_joker({xp_gained = true, other_card = G.jokers.cards[i]})
     end
 end
+local function summon_token(id, level)
+    local token = create_card(nil, G.jokers, nil, nil, nil, nil, id)
+    token:set_edition({negative=true}, true, true)
+    if G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.HAND_PLAYED or
+    G.STATE == G.STATES.DRAW_TO_HAND then
+        token.ability.token = true
+    end
+    if level then
+        token.ability.arachnei_sap.xp = (level-1)*3
+    end
+    G.jokers:emplace(token)
+    token:add_to_deck()
+end
+local function reduce_blind_chips(mult)
 ----------------------
 -- button callbacks --
 ----------------------
@@ -182,10 +186,15 @@ local function decorate()
         local old_return = card_generate_uibox_ability_table(self)
         -- if hovered card is a joker or a playing card,
         -- prepend SAP tooltip to info
-        if self.config.center.set == "Joker" or self.config.center.set == "Default" or self.config.center.set == "Enhanced" and 
+        if self.config.center.set == "Joker" and 
         G.STATE ~= G.STATES.MENU and G.STATE ~= G.STATES.TUTORIAL then
             sap_stats_node = {name="SAP Stats"}
-            localize{type='other', key="sap_stats_loc", nodes=sap_stats_node, vars={self.ability.arachnei_sap.chips,self.ability.arachnei_sap.mult,self.ability.arachnei_sap.xmult,self.ability.arachnei_sap.xp}}
+            localize{type='other', key="sap_stats_loc_jok", nodes=sap_stats_node, vars={self.ability.arachnei_sap.chips,self.ability.arachnei_sap.mult,self.ability.arachnei_sap.xmult,self.ability.arachnei_sap.xp}}
+            table.insert(old_return.info, 1, sap_stats_node)
+        elseif self.config.center.set == "Default" or self.config.center.set == "Enhanced" and
+        G.STATE ~= G.STATES.MENU and G.STATE ~= G.STATES.TUTORIAL then
+            sap_stats_node = {name="SAP Stats"}
+            localize{type='other', key="sap_stats_loc_card", nodes=sap_stats_node, vars={self.ability.arachnei_sap.chips,self.ability.arachnei_sap.mult,self.ability.arachnei_sap.xmult}}
             table.insert(old_return.info, 1, sap_stats_node)
         end
         return old_return
@@ -223,6 +232,14 @@ local function decorate()
             end
             -------------------------
         end
+        -------------------------------------------------------
+        -- dissolve temporary tokens at the end of the round --
+        if self.ability.set == "Joker" and context.end_of_round then
+            if self.ability.token then
+                self:start_dissolve()
+            end
+        end
+        -------------------------------------------------------
         return old_return
     end
 
@@ -302,6 +319,8 @@ local tier_1_pets = {
     {
         id = "j_ant_arachnei",
         name = "Ant",
+        cost = 4,
+        rarity = 1,
         desc = {
             "On the {C:attention}first hand{} played, {C:inactive}#3#{}{C:attention}#4#{}{C:inactive}#5#{}",
             "random cards in hand permanently gains",
@@ -325,8 +344,6 @@ local tier_1_pets = {
             end
             return loc_vars
         end,
-        cost = 4,
-        rarity = 1,
         config = {extra={chips=1, mult=1}},
         calculate_joker_effect = function(card, context)
             -- first hand played effect
@@ -357,6 +374,8 @@ local tier_1_pets = {
     {
         id = "j_beaver_arachnei",
         name = "Beaver",
+        cost = 4,
+        rarity = 1,
         desc = {
             "Whenever you buy a {C:attention}Beaver{},",
             "including this one, give all cards",
@@ -379,11 +398,9 @@ local tier_1_pets = {
             end
             return loc_vars
         end,
-        cost = 4,
-        rarity = 1,
         config = {extra={chips=1}},
         add_to_deck_effect = function(card, from_debuff)
-            if card.ability.name == "Beaver" then
+            if card.ability.name == "Beaver" and not from_debuff then
                 for i=1, #G.jokers.cards do
                     if G.jokers.cards[i].config.center.key == "j_beaver_arachnei" then
                         G.jokers.cards[i]:juice_up(0.8, 0.8)
@@ -407,14 +424,15 @@ local tier_1_pets = {
             end
         end
     },
-    "j_cricket_arachnei", 
-    "j_duck_arachnei", 
     {
-        id = "j_fish_arachnei",
-        name = "Fish",
+        id = "j_cricket_arachnei",
+        name = "Cricket",
+        cost = 4,
+        rarity = 1,
         desc = {
-            "Whenever this levels up,",
-            "give another Joker +{C:inactive}#1#{}{C:mult}#2#{}{C:inactive}#3#{} Mult"
+            "On the first hand played, summon",
+            "a token Zombie Cricket. It gives",
+            "+{C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{} Chips and Mult",
         },
         loc_vars = function(card)
             loc_vars = {}
@@ -433,8 +451,35 @@ local tier_1_pets = {
             end
             return loc_vars
         end,
+        calculate_joker_effect = function(card, context)
+            if card.ability.name == "Cricket" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.after then 
+                summon_token("j_zombie_cricket_arachnei", math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3))
+            end
+        end
+    }, 
+    "j_duck_arachnei", 
+    {
+        id = "j_fish_arachnei",
+        name = "Fish",
         cost = 4,
         rarity = 1,
+        desc = {
+            "Whenever this levels up,",
+            "give another Joker +{C:inactive}#1#{}{C:mult}#2#{}{C:inactive}#3#{} Mult"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = ""
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2"
+            end
+            return loc_vars
+        end,
         config = {extra={mult=1}},
         calculate_joker_effect = function(card, context)
             if context.level_up and context.other_card.unique_val == card.unique_val then
@@ -444,16 +489,13 @@ local tier_1_pets = {
                         table.insert(candidates, i)
                     end
                 end
-                logger:info("a")
                 if #candidates == 0 then
                     for i=1, #G.jokers.cards do
                         table.insert(candidates, i)
                     end
                 end
-                logger:info("b")
                 local chosen = pseudorandom_element(candidates, pseudoseed("arachneifishproc"..G.GAME.round))
-                logger:info("chosen: ".. chosen)
-                ease_sap_mult(G.jokers.cards[chosen], card.ability.extra.mult * math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3), true)
+                ease_sap_mult(G.jokers.cards[chosen], card.ability.extra.mult * (math.min(math.floor(card.ability.arachnei_sap.xp/3)+1, 3)-1), true)
             end
         end,
     }, 
@@ -473,7 +515,73 @@ local tier_1_pets = {
     "j_sneaky_egg_arachnei", 
     "j_cuddle_toad_arachnei", 
     {
-        id="j_basilisk_arachnei"
+        id="j_basilisk_arachnei",
+        name = "Basilisk",
+        cost = 4,
+        rarity = 2,
+        desc = {
+            "{C:attention}Boss Blind{} effects are",
+            "disabled. {C:attention}Boss Blinds{} are {X:chips,C:white}X#1#{}",
+            "larger, scaling with ante,",
+            "and reduced by level"
+        },
+        loc_vars = function(card)
+            return {card.ability.extra.boss_mult+(card.ability.extra["lv"..card.ability.arachnei_sap.xp.."_scaling"]*(G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante or 1))}
+        end,
+        config = {extra={boss_mult = 1.75, lv1_scaling = 0.25, lv2_scaling = 0.2, lv3_scaling = 0.15}},
+        add_to_deck_effect = function(card, from_debuff)
+            if card.ability.name == 'Basilisk' and not from_debuff and G.GAME.blind and G.GAME.blind.boss and not G.GAME.blind.disabled then
+                G.GAME.blind:disable()
+                play_sound('timpani')
+                card_eval_status_text(card, 'extra', nil, nil, nil, {message = localize('ph_boss_disabled')})
+                G.E_MANAGER:add_event(Event({
+                    trigger ='after',
+                    delay = 0.1,
+                    func = function()
+                        -- shoutout codex arcanum
+                        G.GAME.blind.chips = math.floor(G.GAME.blind.chips * (card.ability.extra.boss_mult+(card.ability.extra["lv"..card.ability.arachnei_sap.xp.."_scaling"]*G.GAME.round_resets.ante)))
+                        G.GAME.blind.chip_text = number_format(G.GAME.blind.chips)
+                        G.FUNCS.blind_chip_UI_scale(G.hand_text_area.blind_chips)
+                        G.HUD_blind:recalculate()
+                        G.hand_text_area.blind_chips:juice_up(0.8, 0.8)
+                        play_sound('chips2')
+                        return true
+                    end
+                }))
+            end
+        end,
+        calculate_joker_effect = function(card, context)
+            if card.ability.name == 'Basilisk' and context.setting_blind and not card.getting_sliced and not context.blueprint and context.blind.boss then
+                G.E_MANAGER:add_event(Event({
+                    func = function()
+                        G.E_MANAGER:add_event(Event({
+                            func = function()
+                                G.GAME.blind:disable()
+                                play_sound('timpani')
+                                delay(0.4)
+                                return true 
+                            end,
+                        }))
+                        card_eval_status_text(card, 'extra', nil, nil, nil, {message = localize('ph_boss_disabled')})
+                        return true 
+                    end,
+                }))
+                G.E_MANAGER:add_event(Event({
+                    trigger ='after',
+                    delay = 0.1,
+                    func = function()
+                        -- shoutout codex arcanum
+                        G.GAME.blind.chips = math.floor(G.GAME.blind.chips * card.ability.extra.boss_mult)
+                        G.GAME.blind.chip_text = number_format(G.GAME.blind.chips)
+                        G.FUNCS.blind_chip_UI_scale(G.hand_text_area.blind_chips)
+                        G.HUD_blind:recalculate()
+                        G.hand_text_area.blind_chips:juice_up(0.8, 0.8)
+                        play_sound('chips2')
+                        return true
+                    end
+                }))
+            end
+        end
     }, 
     "j_bulldog_arachnei", 
     "j_chipmunk_arachnei", 
@@ -566,6 +674,33 @@ local tier_6_pets = {
     "j_lionfish_arachnei", "j_mantis_shrimp_arachnei", "j_mongoose_arachnei", "j_octopus_arachnei", "j_puma_arachnei", "j_sauropod_arachnei", 
     "j_tyrannosaurus_arachnei", "j_lioness_arachnei", "j_tapir_arachnei", "j_walrus_arachnei", "j_white_tiger_arachnei", "j_good_dog_arachnei", 
 }
+local token_pets = {
+    {
+        id = "j_zombie_cricket_arachnei",
+        name = "Zombie Cricket",
+        cost = 0,
+        rarity = 1,
+        desc = {
+            "{C:inactive}A cricket, but dead"
+        },
+        config={base_stats={mult=1, chips=1, xmult=1, xp=1}},
+    }, 
+    {
+        id = "j_bee_arachnei",
+        name = "Bee",
+        cost = 0,
+        rarity = 1,
+        desc = {
+            "{C:inactive}A hard-working bee"
+        },
+        config={base_stats={mult=1, chips=1, xmult=1, xp=1}}
+    }, 
+    "j_loyal_chinchilla_arachnei", "j_cracked_egg_arachnei", "j_dirty_rat_arachnei",
+    "j_lizard_tail_arachnei", "j_nest_arachnei", "j_daycrawler_arachnei", "j_ram_arachnei", "j_monty_arachnei", "j_smaller_slime_arachnei",
+    "j_bus_arachnei", "j_butterfly_arachnei", "j_smaller_slug_arachnei", "j_smallest_slug", "j_chimeric_lion_arachnei", "j_chimeric_goat_arachnei",
+    "j_chimeric_snake_arachnei", "j_giant_eyes_dog_arachnei", "j_chick_arachnei", "j_nessie?_arachnei", "j_zombie_fly_arachnei",
+    "j_young_phoenix_arachnei", "j_fire_pup_arachnei", "j_hydra_head_arachnei", "j_golden_retriever_arachnei", "j_rock_arachnei", "j_good_dog_arachnei"
+}
 local tier_1_foods = {
     "c_apple_arachnei", "c_honey_arachnei", "c_water_of_youth_arachnei", "c_love_potion_arachnei", "c_egg_arachnei", "c_peach_arachnei", 
     "c_strawberry_arachnei", "c_bacon_arachnei", "c_blueberry_arachnei", "c_cookie_arachnei",
@@ -624,6 +759,7 @@ local all_cards = {
     {name="tier_4_pets", data=tier_4_pets},
     {name="tier_5_pets", data=tier_5_pets},
     {name="tier_6_pets", data=tier_6_pets},
+    {name="token_pets", data=token_pets},
     {name="tier_1_foods", data=tier_1_foods},
     {name="tier_2_foods", data=tier_2_foods},
     {name="tier_3_foods", data=tier_3_foods},
@@ -648,7 +784,7 @@ local all_cards = {
 
 
 local function on_enable()
-    local sap_stats_loc = {
+    local sap_stats_loc_jok = {
         name = "SAP Stats",
         text = {
             "Chips: {C:chips}+#1#",
@@ -659,10 +795,24 @@ local function on_enable()
         name_parsed = {},
         text_parsed = {}
     }
-    for _, line in ipairs(sap_stats_loc.text) do
-        sap_stats_loc.text_parsed[#sap_stats_loc.text_parsed+1] = loc_parse_string(line)
+    local sap_stats_loc_card = {
+        name = "SAP Stats",
+        text = {
+            "Chips: {C:chips}+#1#",
+            "Mult: {C:mult}+#2#",
+            "XMult: {X:mult,C:white}X#3#",
+        },
+        name_parsed = {},
+        text_parsed = {}
+    }
+    for _, line in ipairs(sap_stats_loc_card.text) do
+        sap_stats_loc_card.text_parsed[#sap_stats_loc_card.text_parsed+1] = loc_parse_string(line)
     end
-    G.localization.descriptions.Other.sap_stats_loc = sap_stats_loc
+    for _, line in ipairs(sap_stats_loc_jok.text) do
+        sap_stats_loc_jok.text_parsed[#sap_stats_loc_jok.text_parsed+1] = loc_parse_string(line)
+    end
+    G.localization.descriptions.Other.sap_stats_loc_jok = sap_stats_loc_jok
+    G.localization.descriptions.Other.sap_stats_loc_card = sap_stats_loc_card
     -- must decorate in on_enable to get proper stack
     decorate()
     for i=1, #all_cards do

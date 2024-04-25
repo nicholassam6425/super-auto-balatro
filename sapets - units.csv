@@ -1,7 +1,7 @@
 NAME,SAP EFFECT,BALATRO EFFECT
-Ant,"on death, buff other animal","on destroyed, give playing cards mult and chips"
-Beaver,"on sell, buff other animal","on sell, buff playing cards bonus mult"
-Cricket,"on death, summon temporary unit",
+Ant,"on death, buff other animal","on first hand played, give a random card in hand +1 mult and +1 chips"
+Beaver,"on sell, buff other animal","When you buy this card, give all cards in your deck +1 chips"
+Cricket,"on death, summon temporary unit","on first hand played, summon a Zombie Cricket. It gives +1/2/3 Chips and +1/2/3 Mult"
 Duck,"on sell, buff other animal","on sell, buff playing cards bonus chips"
 Fish,"on level, buff other animal","on level, give another joker bonus mult"
 Horse,"on summon, buff self",
@@ -19,7 +19,7 @@ Warg,"on mana gain, deal damage","on mana gain, reduce blind chips"
 Bunyip,"per roll, gain hp","on roll, gain chips"
 Sneaky Egg,"on battle start, die and spawn a token",
 Cuddle Toad,"on sell, gain a temporary buff token","on sell, create a Witch toy that breaks in 2 rounds"
-Basilisk,"on battle start, turn other animal into rock","on battle start, disable the blind effect, and if an effect is disabled, increase blind chips"
+Basilisk,"on battle start, turn other animal into rock",Boss Blind effects are disabled. Boss Blinds are X(1.75+(current ante * (0.25/0.2/0.15)) larger
 Bulldog,"on attack, set attack to hp",
 Chipmunk,"on sell, gain gold copy of buff on this","on sell, create a copy of the perk effect in the shop"
 Groundhog,"on death, gain trumpet",
@@ -47,7 +47,7 @@ Ladybug,"on animal gain perk, buff self","on ally gaining a perk, gain temporary
 Moth,"on battle start, buff front animal","on battle start, give the left-most joker bonus mult"
 Frilled Dragon,"on battle start, buff self per on death animal","on battle start, gain bonus mult and bonus chips for each on-death joker"
 Sloth,chill maxxer,bro is CHILLING!
-Crab,"on battle start, copy stats from stronger ally",
+Crab,"on battle start, copy stats from stronger ally","on battle start, set chips to 50%/100%/150% of ally with highest chips bonus"
 Flamingo,"on death, buff ally",
 Hedgehog,"on death, deal damage to all",
 Kangaroo,"on ally attack, gain self-buff",
@@ -230,7 +230,7 @@ Rhino,"on kill, deal damage",
 Rooster,"on death, summon token with 50% of this stats",
 Scorpion,on summon gain venomous,
 Seal,"on food buff, buff allies",
-Shark,"on ally death, buff self",
+Shark,"on ally death, buff self",campfire-esque?
 Turkey,"on ally summon, buff it",
 Red Dragon,"on battle start, apply DoT to enemy",
 Vampire Bat,"on enemy debuffed, deal damage and buff self based on damage",
@@ -340,4 +340,31 @@ Lioness,on turn end buff allies and future allies,
 Tapir,on death summon copy of ally,
 Walrus,on death give ally venomous,
 White Tiger,on battle start give ally exp,
+Zombie Cricket,1/2/3-1/2/3,
+Bee,,
+Loyal Chinchilla,,
+Cracked Egg,,
+Dirty Rat,,
+Lizard Tail,,
+Nest,,
+Daycrawler,,
+Ram,,
+Monty,,
+Smaller Slime,,
+Bus,,
+Butterfly,,
+Smaller Slug,,
+Smallest Slug,,
+Chimeric Lion,,
+Chimeric Goat,,
+Chimeric Snake,,
+Giant Eyes Dog,,
+Chick,,
+Nessie,,
+Zombie Fly,,
+Young Phoenix,,
+Fire Pup,,
+Hydra Head,,
+Golden Retriever,,
+Rock,,
 Good Dog,"on battle start, randomly buff all allies",
