@@ -5,7 +5,7 @@ local utils = require("utils")
 
 -- configs
 local configs = {
-    remove_other_jokers = false,
+    remove_other_jokers = false, -- unimplemented for now
 }
 
 ----------------------
@@ -70,6 +70,7 @@ local function ease_sap_xp(card, value, from_eval)
     end
 end
 -- summon a token then give it all the token things if it was spawned during a blind
+-- then start eval step
 local function summon_token(id, level)
     local token = create_card(nil, G.jokers, nil, nil, nil, nil, id)
     if G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.HAND_PLAYED or
@@ -83,6 +84,9 @@ local function summon_token(id, level)
     end
     G.jokers:emplace(token)
     token:add_to_deck()
+    for i=1, #G.jokers.cards do
+        G.jokers.cards[i]:calculate_joker({summon = true, other_card = token})
+    end
 end
 -- modify blind chip requirement by mult
 local function mult_blind_chips(mult)
@@ -127,6 +131,7 @@ end
 ----------------------
 G.FUNCS.can_absorb_card = function(e)
     for i=1, #G.jokers.cards do
+        -- find card by unique_val, then check if the card to the right is the same card 
         if G.jokers.cards[i].unique_val == e.config.ref_table.unique_val then
             if G.jokers.cards[i+1] and G.jokers.cards[i+1].config.center.key == e.config.ref_table.config.center.key then
                 e.config.colour = G.C.PURPLE
@@ -142,6 +147,8 @@ end
 G.FUNCS.absorb_card = function(e)
     local card = e.config.ref_table
     for i=1, #G.jokers.cards do
+        -- find card by unique_val, then dissolve card to the right & increase card xp by
+        -- absorbed card's xp
         if G.jokers.cards[i].unique_val == card.unique_val then
             card:juice_up(0.8, 0.8)
             G.jokers.cards[i+1]:start_dissolve({G.C.GOLD}, true)
@@ -256,7 +263,7 @@ local function decorate()
                 hand_chips = mod_chips(hand_chips + self.ability.arachnei_sap.chips)
                 update_hand_text({delay = 0.2}, {chips = hand_chips})
                 card_eval_status_text(self, 'extra', nil, nil, nil, {
-                    message = localize{type='variable', key='a_chips', vars = {self.ability.arachnei_sap.chips}},
+                    message = localize{type='variable', key='a_chips_text_arachneisapets', vars = {self.ability.arachnei_sap.chips}},
                     colour = G.C.CHIPS
                 })
             end
@@ -333,13 +340,14 @@ local function decorate()
         return misc_find_joker(name, non_debuff)
     end
 
+    -- add absorb button to jokers
     local uidef_use_and_sell_buttons = G.UIDEF.use_and_sell_buttons
     function G.UIDEF.use_and_sell_buttons(card)
         local old_return = uidef_use_and_sell_buttons(card)
-        if card.area and card.area.config.type == 'joker' then
+        if card.area and card.area.config.type == 'joker' and not card.config.center.consumeable then
             table.insert(old_return.nodes[1].nodes, {n=G.UIT.R, config={align='cl'}, nodes={
                 {n=G.UIT.C, config={align = "cr"}, nodes={
-                    {n=G.UIT.C, config={ref_table = card, align = "cr",padding = 0.1, r=0.08, minw = 1.25, hover = true, shadow = true, colour = G.C.UI.BACKGROUND_INACTIVE, one_press = true, button = 'sell_card', func = 'can_absorb_card'}, nodes={
+                    {n=G.UIT.C, config={ref_table = card, align = "cr",padding = 0.1, r=0.08, minw = 1.25, hover = true, shadow = true, colour = G.C.UI.BACKGROUND_INACTIVE, one_press = true, button = 'absorb_card', func = 'can_absorb_card'}, nodes={
                         {n=G.UIT.B, config = {w=0.1,h=0.6}},
                         {n=G.UIT.T, config={text = "Absorb",colour = G.C.UI.TEXT_LIGHT, scale = 0.55, shadow = true}}
                     }}
@@ -349,12 +357,23 @@ local function decorate()
         return old_return
     end
 
+    -- add shop buff to game vars
     local game_start_run = Game.start_run
     function Game:start_run(args)
         game_start_run(self, args)
         if not G.GAME.arachnei_sap then
             G.GAME.arachnei_sap = {permanent_shop_buff={chips=0, mult=0, xmult=0}}
         end
+    end
+
+    -- pig logic
+    local card_set_cost = Card.set_cost
+    function Card:set_cost()
+        local old_return = card_set_cost(self)
+        if self.config.center.key == "j_pig_arachnei" then
+            self.sell_cost = self.sell_cost * math.ceil(1+(0.5*get_level(self.ability.arachnei_sap.xp)))
+        end
+        return old_return
     end
 end
 ---------------
@@ -393,7 +412,7 @@ local tier_1_pets = {
         config = {extra={chips=1, mult=1}},
         calculate_joker_effect = function(card, context)
             -- first hand played effect
-            if card.ability.name == "Ant" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.before then 
+            if card.config.center.key == "j_ant_arachnei" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.before then 
                 local level = get_level(card.ability.arachnei_sap.xp)
                 for i=1, level do
                     local upgrade_card = pseudorandom_element(G.hand.cards, pseudoseed(G.GAME.round..i..'sapets_ant_proc'))
@@ -410,7 +429,7 @@ local tier_1_pets = {
                 end
             end
             -- visual effect for first hand
-            if card.ability.name == "Ant" and context.first_hand_drawn and not context.blueprint then
+            if card.config.center.key == "j_ant_arachnei" and context.first_hand_drawn and not context.blueprint then
                 local eval = function() return G.GAME.current_round.hands_played == 0 end
                 juice_card_until(card, eval, true)
             end
@@ -446,7 +465,7 @@ local tier_1_pets = {
         end,
         config = {extra={chips=1}},
         add_to_deck_effect = function(card, from_debuff)
-            if card.ability.name == "Beaver" and not from_debuff then
+            if card.config.center.key == "j_beaver_arachnei" and not from_debuff then
                 for i=1, #G.jokers.cards do
                     if G.jokers.cards[i].config.center.key == "j_beaver_arachnei" then
                         G.jokers.cards[i]:juice_up(0.8, 0.8)
@@ -498,8 +517,13 @@ local tier_1_pets = {
             return loc_vars
         end,
         calculate_joker_effect = function(card, context)
-            if card.ability.name == "Cricket" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.after then 
+            if card.config.center.key == "j_cricket_arachnei" and G.GAME.current_round.hands_played == 0 and context.cardarea == G.jokers and context.after then 
                 summon_token("j_zombie_cricket_arachnei", get_level(card.ability.arachnei_sap.xp))
+            end
+            -- visual effect for first hand
+            if card.config.center.key == "j_cricket_arachnei" and context.first_hand_drawn and not context.blueprint then
+                local eval = function() return G.GAME.current_round.hands_played == 0 end
+                juice_card_until(card, eval, true)
             end
         end
     }, 
@@ -531,7 +555,7 @@ local tier_1_pets = {
         end,
         config = {extra={chips=1}},
         calculate_joker_effect = function(card, context)
-            if card.ability.name == "Duck" and context.selling_self then
+            if card.config.center.key == "j_duck_arachnei" and context.selling_self then
                 G.GAME.arachnei_sap.permanent_shop_buff.chips = G.GAME.arachnei_sap.permanent_shop_buff.chips + (card.ability.extra.chips*get_level(card.ability.arachnei_sap.xp))
             end
         end
@@ -560,7 +584,7 @@ local tier_1_pets = {
         end,
         config = {extra={mult=1}},
         calculate_joker_effect = function(card, context)
-            if card.ability.name == "Fish" and context.level_up and context.other_card.unique_val == card.unique_val then
+            if card.config.center.key == "j_fish_arachnei" and context.level_up and context.other_card.unique_val == card.unique_val then
                 local candidates = {}
                 for i=1, #G.jokers.cards do
                     if card.unique_val ~= G.jokers.cards[i].unique_val then
@@ -577,7 +601,58 @@ local tier_1_pets = {
             end
         end,
     }, 
-    "j_horse_arachnei", 
+    {
+        id = "j_horse_arachnei",
+        name = "Horse",
+        cost = 4,
+        rarity = 2,
+        desc = {
+            "Whenever a token is summoned,",
+            "gain +{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips and +{C:inactive}#4#{}{C:mult}#5#{}{C:inactive}#6#{} Mult"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[4] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[5] = "3"
+                loc_vars[3] = ""
+                loc_vars[6] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[4] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[5] = "2"
+                loc_vars[3] = "/3"
+                loc_vars[6] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[4] = ""
+                loc_vars[2] = "1"
+                loc_vars[5] = "1"
+                loc_vars[3] = "/2/3"
+                loc_vars[6] = "/2/3"
+            end
+            return loc_vars
+        end,
+        config = {extra={mult=1,chips=1}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_horse_arachnei" and context.summon then
+                card:juice_up(0.8, 0.8)
+                ease_sap_mult(card, card.ability.extra.mult*get_level(card.ability.arachnei_sap.xp), true)
+                card_eval_status_text(card, 'extra', nil, nil, nil, {
+                    message = localize('k_upgrade_ex'),
+                    colour = G.C.MULT
+                })
+                ease_sap_chips(card, card.ability.extra.chips*get_level(card.ability.arachnei_sap.xp), true)
+                card_eval_status_text(card, 'extra', nil, nil, nil, {
+                    message = localize('k_upgrade_ex'),
+                    colour = G.C.CHIPS
+                })
+            end
+        end
+    },
     {
         id = "j_mosquito_arachnei",
         name = "Mosquito",
@@ -605,7 +680,7 @@ local tier_1_pets = {
             return loc_vars
         end,
         calculate_joker_effect = function(card, context)
-            if card.ability.name == "Mosquito" and context.setting_blind and not card.getting_sliced then
+            if card.config.center.key == "j_mosquito_arachnei" and context.setting_blind and not card.getting_sliced then
                 G.E_MANAGER:add_event(Event({
                     func = function()
                         G.E_MANAGER:add_event(Event({
@@ -653,7 +728,7 @@ local tier_1_pets = {
         end,
         config = {extra={mult=1}},
         add_to_deck_effect = function(card, from_debuff)
-            if card.ability.name == "Otter" and not from_debuff then
+            if card.config.center.key == "j_otter_arachnei" and not from_debuff then
                 -- proc other otters
                 for i=1, #G.jokers.cards do
                     if G.jokers.cards[i].config.center.key == "j_otter_arachnei" then
@@ -693,8 +768,47 @@ local tier_1_pets = {
             end
         end
     }, 
-    "j_pig_arachnei", 
-    "j_pigeon_arachnei", 
+    {
+        id = "j_pig_arachnei",
+        name = "Pig",
+        cost = 2,
+        rarity = 1,
+        desc = {
+            "Sells for {C:inactive}#1#{}{C:money}#2#{}{C:inactive}#3#{}% more",
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "50/100/"
+                loc_vars[2] = "150"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "50/"
+                loc_vars[2] = "100"
+                loc_vars[3] = "/150"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "50"
+                loc_vars[3] = "/100/150"
+            end
+            return loc_vars
+        end,
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_pig_arachnei" and context.level_up and other_card.unique_val == card.unique_val then
+                -- on level up, re-calculate sell_cost
+                card:set_cost()
+            end
+        end,
+    }, 
+    {
+        id = "j_pigeon_arachnei",
+        name = "Pigeon",
+        cost = 3,
+        rarity = 1,
+        desc = {
+
+        }
+    }, ----------------------------------------------------------------------------------------------------
     "j_baku_arachnei", 
     "j_axehandle_hound_arachnei", 
     "j_barghest_arachnei", 
@@ -721,7 +835,7 @@ local tier_1_pets = {
         end,
         config = {extra={boss_mult = 1.75, lv1_scaling = 0.25, lv2_scaling = 0.2, lv3_scaling = 0.15}},
         add_to_deck_effect = function(card, from_debuff)
-            if card.ability.name == 'Basilisk' and not from_debuff and G.GAME.blind and G.GAME.blind.boss and not G.GAME.blind.disabled then
+            if card.config.center.key == 'j_basilisk_arachnei' and not from_debuff and G.GAME.blind and G.GAME.blind.boss and not G.GAME.blind.disabled then
                 G.GAME.blind:disable()
                 play_sound('timpani')
                 card_eval_status_text(card, 'extra', nil, nil, nil, {message = localize('ph_boss_disabled')})
@@ -729,7 +843,7 @@ local tier_1_pets = {
             end
         end,
         calculate_joker_effect = function(card, context)
-            if card.ability.name == 'Basilisk' and context.setting_blind and not card.getting_sliced and not context.blueprint and context.blind.boss then
+            if card.config.center.key == 'j_basilisk_arachnei' and context.setting_blind and not card.getting_sliced and not context.blueprint and context.blind.boss then
                 G.E_MANAGER:add_event(Event({
                     func = function()
                         G.E_MANAGER:add_event(Event({
@@ -841,6 +955,7 @@ local tier_6_pets = {
 }
 local token_pets = {
     {
+        yes_pool_flag="token",
         id = "j_zombie_cricket_arachnei",
         name = "Zombie Cricket",
         cost = 0,
@@ -849,9 +964,10 @@ local token_pets = {
             "{C:inactive}A cricket, but dead"
         },
         config={base_stats={mult=1, chips=1, xmult=1, xp=1}},
-        yes_pool_flag="tokens"
+        
     }, 
     {
+        yes_pool_flag="token",
         id = "j_bee_arachnei",
         name = "Bee",
         cost = 0,
@@ -860,7 +976,7 @@ local token_pets = {
             "{C:inactive}A hard-working bee"
         },
         config={base_stats={mult=1, chips=1, xmult=1, xp=1}},
-        yes_pool_flag="tokens"
+        
     }, 
     "j_loyal_chinchilla_arachnei", "j_cracked_egg_arachnei", "j_dirty_rat_arachnei",
     "j_lizard_tail_arachnei", "j_nest_arachnei", "j_daycrawler_arachnei", "j_ram_arachnei", "j_monty_arachnei", "j_smaller_slime_arachnei",
@@ -869,7 +985,55 @@ local token_pets = {
     "j_young_phoenix_arachnei", "j_fire_pup_arachnei", "j_hydra_head_arachnei", "j_golden_retriever_arachnei", "j_rock_arachnei", "j_good_dog_arachnei"
 }
 local tier_1_foods = {
-    "c_apple_arachnei", "c_honey_arachnei", "c_water_of_youth_arachnei", "c_love_potion_arachnei", "c_egg_arachnei", "c_peach_arachnei", 
+    {
+        consumable = true,
+        id = "c_apple_arachnei",
+        name = "Apple",
+        cost = 1,
+        set = "Food",
+        desc = {
+            "Give up to {C:attention}#1#{} cards",
+            "+{C:mult}#2#{} Mult and +{C:chips}#3#{} Chips"
+        },
+        config = {extra={mult=1,chips=1,max_highlighted=2}},
+        loc_vars = function(card)
+            return {card.config.extra.max_highlighted, card.config.extra.mult, card.config.extra.chips}
+        end,
+        use_effect = function(card, area, copier)
+            if card.config.center.key == "c_apple_arachnei" then
+                -- juice up
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after', 
+                    delay = 0.4, 
+                    func = function()
+                        play_sound('tarot1')
+                        card:juice_up(0.3, 0.5)
+                        return true 
+                    end 
+                }))
+                for i=1, #G.hand.highlighted do
+                    G.E_MANAGER:add_event(Event({
+                        trigger = 'after',
+                        delay = 0.15,
+                        func = function()
+                            ease_sap_mult(G.hand.highlighted[i], card.ability.extra.mult)
+                            ease_sap_chips(G.hand.highlighted[i], card.ability.extra.chips)
+                            G.hand.highlighted[i]:juice_up(0.8, 0.8)
+                            return true
+                        end
+                    }))
+                end
+            end
+        end,
+        use_condition = function(card, any_state, skip_check)
+            if G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.TAROT_PACK or G.STATE == G.STATES.SPECTRAL_PACK then
+                if card.config.center.key == "c_apple_arachnei" and #G.hand.highlighted >= 1 and #G.hand.highlighted <= card.ability.extra.max_highlighted then
+                    return true
+                end
+            end
+        end,
+    }, 
+    "c_honey_arachnei", "c_water_of_youth_arachnei", "c_love_potion_arachnei", "c_egg_arachnei", "c_peach_arachnei", 
     "c_strawberry_arachnei", "c_bacon_arachnei", "c_blueberry_arachnei", "c_cookie_arachnei",
     "c_cupcake_arachnei", "c_meatbone_arachnei", 
 }
@@ -899,7 +1063,44 @@ local tier_6_foods = {
     "c_chicken_leg_arachnei", "c_soft_ice_arachnei", 
 }
 local special_foods = {
-    "c_bread_crumbs_arachnei", "c_rambutan_arachnei", "c_golden_egg_arachnei", "c_milk_arachnei", 
+    {
+        yes_pool_flag = "special",
+        consumable = true,
+        id = "c_bread_crumbs_arachnei",
+        name = "Bread Crumbs",
+        cost = 0,
+        set = "Food",
+        desc = {
+            "Give a selected Joker +1 Mult"
+        },
+        config = {extra={mult=1,max_highlighted=1}},
+        loc_vars = function(card)
+            return {card.config.extra.max_highlighted, card.config.extra.mult, card.config.extra.chips}
+        end,
+        use_effect = function(card, area, copier)
+            if card.config.center.key == "c_bread_crumbs_arachnei" then
+                -- juice up
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after', 
+                    delay = 0.4, 
+                    func = function()
+                        play_sound('tarot1')
+                        card:juice_up(0.3, 0.5)
+                        return true 
+                    end 
+                }))
+                ease_sap_mult(G.jokers.highlighted[1], card.ability.extra.mult)
+                G.jokers.highlighted[1]:juice_up(0.8, 0.8)
+            end
+        end,
+        use_condition = function(card, any_state, skip_check)
+            if G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.TAROT_PACK or G.STATE == G.STATES.SPECTRAL_PACK then
+                if card.config.center.key == "c_bread_crumbs_arachnei" and #G.jokers.highlighted == card.ability.extra.max_highlighted then
+                    return true
+                end
+            end
+        end,
+    }, "c_rambutan_arachnei", "c_golden_egg_arachnei", "c_milk_arachnei", 
     "c_skewer_arachnei", "c_peg_leg_arachnei", "c_coconut_arachnei", "c_peanut_arachnei", "c_holy_water_arachnei", 
 }
 local tier_1_toys = { "t_balloon_arachnei", "t_tennis_ball_arachnei" }
@@ -951,6 +1152,7 @@ local all_cards = {
 
 
 local function on_enable()
+    -- localization objects for tooltips
     local sap_stats_loc_jok = {
         name = "SAP Stats",
         text = {
@@ -980,8 +1182,20 @@ local function on_enable()
     end
     G.localization.descriptions.Other.sap_stats_loc_jok = sap_stats_loc_jok
     G.localization.descriptions.Other.sap_stats_loc_card = sap_stats_loc_card
+    -- adds {"+#1# Chips"} loc object. just skipped the parsing
+    G.localization.misc.v_dictionary_parsed.a_chips_text_arachneisapets = {{control={},strings={"+",{1}, " Chips"}}}
+
+    -- add pink (for toys badge colour)
+    G.C.PINK_ARACHNEISAPETS = HEX("FF9999")
+
+    -- add new consumable sets
+    consumable.newSet{name="Food", colour=G.C.GREEN, collection_width=nil, collection_height=nil}
+    consumable.newSet{name="Toys", colour=G.C.PINK_ARACHNEISAPETS, collection_width=nil, collection_height=nil}
+
     -- must decorate in on_enable to get proper stack
     decorate()
+
+    -- load all cards
     for i=1, #all_cards do
         local pool_name = all_cards[i].name
         local pool_data = all_cards[i].data
