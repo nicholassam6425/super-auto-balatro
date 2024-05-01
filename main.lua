@@ -88,6 +88,17 @@ local function summon_token(id, level)
         G.jokers.cards[i]:calculate_joker({summon = true, other_card = token})
     end
 end
+-- give consumable
+local function give_consumable(id, ignore_space)
+    logger:info((ignore_space) or (G.consumeables.config.card_limit - #G.consumeables.cards >= 1))
+    if (ignore_space) or (G.consumeables.config.card_limit - #G.consumeables.cards >= 1) then
+        local consumable = create_card(nil, G.consumeables, nil, nil, nil, nil, id)
+        consumable:add_to_deck()
+        G.consumeables:emplace(consumable)
+        return consumable
+    end
+    return false
+end
 -- modify blind chip requirement by mult
 local function mult_blind_chips(mult)
     G.E_MANAGER:add_event(Event({
@@ -151,6 +162,9 @@ G.FUNCS.absorb_card = function(e)
         -- absorbed card's xp
         if G.jokers.cards[i].unique_val == card.unique_val then
             card:juice_up(0.8, 0.8)
+            if G.jokers.cards[i+1].edition and not card.edition then -- avoid worst case 
+                card:set_edition(G.jokers.cards[i+1].edition)
+            end
             G.jokers.cards[i+1]:start_dissolve({G.C.GOLD}, true)
             local xp_gain = G.jokers.cards[i+1].ability.arachnei_sap.xp
             G.jokers:remove_card(G.jokers.cards[i+1])
@@ -442,49 +456,43 @@ local tier_1_pets = {
         cost = 4,
         rarity = 1,
         desc = {
-            "Whenever you buy a {C:attention}Beaver{},",
-            "including this one, give all cards",
-            "in your deck +{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips"
+            "Every time you spend ${C:money}${}{C:inactive}#1#{}{C:money}#2#{}{C:inactive}#3#{}",
+            "on rerolls, give all cards",
+            "in your deck +{C:chips}1{} Chips",
+            "{C:inactive}(Remaining: {}{C:money}$#4#{}{C:inactive}){}"
         },
         loc_vars = function(card)
             loc_vars = {}
             if card.ability.arachnei_sap.xp >= 6 then       -- level 3
-                loc_vars[1] = "1/2/"
-                loc_vars[2] = "3"
+                loc_vars[1] = "20/15/"
+                loc_vars[2] = "10"
                 loc_vars[3] = ""
             elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
-                loc_vars[1] = "1/"
-                loc_vars[2] = "2"
-                loc_vars[3] = "/3"
+                loc_vars[1] = "20/"
+                loc_vars[2] = "15"
+                loc_vars[3] = "/10"
             else                                            -- level 1
                 loc_vars[1] = ""
-                loc_vars[2] = "1"
-                loc_vars[3] = "/2/3"
+                loc_vars[2] = "10"
+                loc_vars[3] = "/15/20"
             end
+            loc_vars[4] = card.ability.extra.reroll_remaining
             return loc_vars
         end,
-        config = {extra={chips=1}},
-        add_to_deck_effect = function(card, from_debuff)
-            if card.config.center.key == "j_beaver_arachnei" and not from_debuff then
-                for i=1, #G.jokers.cards do
-                    if G.jokers.cards[i].config.center.key == "j_beaver_arachnei" then
-                        G.jokers.cards[i]:juice_up(0.8, 0.8)
-                        card_eval_status_text(G.jokers.cards[i], 'extra', nil, nil, nil, {
-                            message = localize('k_upgrade_ex'),
-                            colour = G.C.CHIPS
-                        })
-                        for k=1, #G.deck.cards do
-                            ease_sap_chips(G.deck.cards[k], G.jokers.cards[i].ability.extra.chips * get_level(card.ability.arachnei_sap.xp))
-                        end
+        config = {extra={chips=1, reroll_remaining=20}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_beaver_arachnei" and context.reroll_shop then
+                card.ability.extra.reroll_remaining = card.ability.extra.reroll_remaining - G.GAME.current_round.reroll_cost + 1
+                if card.ability.extra.reroll_remaining <= 0 then
+                    local max_val = 20 - (get_level(card.ability.arachnei_sap.xp)-1) * 5
+                    card.ability.extra.reroll_remaining = max_val + card.ability.extra.reroll_remaining
+                    for i=1, #G.deck.cards do
+                        ease_sap_chips(G.deck.cards[i], 1)
                     end
-                end
-                card:juice_up(0.8, 0.8)
-                card_eval_status_text(card, 'extra', nil, nil, nil, {
-                    message = localize('k_upgrade_ex'),
-                    colour = G.C.CHIPS
-                })
-                for k=1, #G.deck.cards do
-                    ease_sap_chips(G.deck.cards[k], card.ability.extra.chips * get_level(card.ability.arachnei_sap.xp))
+                    card_eval_status_text(card, 'extra', nil, nil, nil, {
+                        message = "Deck Upgraded!",
+                        colour = G.C.CHIPS
+                    })
                 end
             end
         end
@@ -806,8 +814,64 @@ local tier_1_pets = {
         cost = 3,
         rarity = 1,
         desc = {
-
-        }
+            "Whenever you gain a Pigeon,",
+            "create {C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{} {C:inactive}#4#{}{C:dark_edition}#5#{} Bread Crumbs",
+            "{C:inactive}(Must have room)"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            loc_vars[4] = "Negative"
+            loc_vars[5] = ""
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = ""
+                loc_vars[4] = ""
+                loc_vars[5] = "Negative"
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = ""
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2"
+            end
+            return loc_vars
+        end,
+        config = {extra=1},
+        add_to_deck_effect = function(card, from_debuff)
+            if card.config.center.key == "j_pigeon_arachnei" then
+                for i=1, #G.jokers.cards do
+                    if G.jokers.cards[i].config.center.key == "j_pigeon_arachnei" then
+                        local level = get_level(G.jokers.cards[i].ability.arachnei_sap.xp)
+                        for j=1, math.min(level, 2) do
+                            local crumbs = give_consumable("c_bread_crumbs_arachnei", level == 3)
+                            if crumbs then
+                                if level == 3 then
+                                    crumbs:set_edition({negative=true})
+                                end
+                                crumbs:juice_up(0.8,0.8)
+                                G.jokers.cards[i]:juice_up(0.8,0.8)
+                                card_eval_status_text(G.jokers.cards[i], 'extra', nil, nil, nil, {
+                                    message = "Crumbs!",
+                                    colour = G.C.IMPORTANT
+                                })
+                            end
+                        end
+                    end
+                end
+                local crumbs = give_consumable("c_bread_crumbs_arachnei", level == 3)
+                if crumbs then 
+                    crumbs:juice_up(0.8,0.8)
+                    card:juice_up(0.8,0.8)
+                    card_eval_status_text(card, 'extra', nil, nil, nil, {
+                        message = "Crumbs!",
+                        colour = G.C.IMPORTANT
+                    })
+                end
+            end
+        end,
     }, ----------------------------------------------------------------------------------------------------
     "j_baku_arachnei", 
     "j_axehandle_hound_arachnei", 
@@ -1094,11 +1158,11 @@ local special_foods = {
             end
         end,
         use_condition = function(card, any_state, skip_check)
-            if G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.TAROT_PACK or G.STATE == G.STATES.SPECTRAL_PACK then
+            -- if G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.TAROT_PACK or G.STATE == G.STATES.SPECTRAL_PACK then
                 if card.config.center.key == "c_bread_crumbs_arachnei" and #G.jokers.highlighted == card.ability.extra.max_highlighted then
                     return true
                 end
-            end
+            -- end
         end,
     }, "c_rambutan_arachnei", "c_golden_egg_arachnei", "c_milk_arachnei", 
     "c_skewer_arachnei", "c_peg_leg_arachnei", "c_coconut_arachnei", "c_peanut_arachnei", "c_holy_water_arachnei", 
