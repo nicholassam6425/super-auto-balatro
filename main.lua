@@ -504,7 +504,7 @@ local tier_1_pets = {
         rarity = 1,
         desc = {
             "On the first hand played, summon",
-            "a token Zombie Cricket. It gives",
+            "a {C:attention}token{} {C:green}Zombie Cricket{}. It gives",
             "+{C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{} Chips and Mult",
         },
         loc_vars = function(card)
@@ -541,8 +541,8 @@ local tier_1_pets = {
         cost = 4,
         rarity = 1,
         desc = {
-            "When you sell this card, give all",
-            "future jokers +{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips"
+            "When you {C:attention}sell{} this card, give all",
+            "{C:attention}future jokers{} +{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips"
         },
         loc_vars = function(card)
             loc_vars = {}
@@ -574,7 +574,7 @@ local tier_1_pets = {
         cost = 4,
         rarity = 1,
         desc = {
-            "Whenever this levels up,",
+            "Whenever this {C:attention}levels up{},",
             "give another Joker +{C:inactive}#1#{}{C:mult}#2#{}{C:inactive}#3#{} Mult"
         },
         loc_vars = function(card)
@@ -615,7 +615,7 @@ local tier_1_pets = {
         cost = 4,
         rarity = 2,
         desc = {
-            "Whenever a token is summoned,",
+            "Whenever a {C:attention}token{} is {C:attention}summoned{},",
             "gain +{C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} Chips and +{C:inactive}#4#{}{C:mult}#5#{}{C:inactive}#6#{} Mult"
         },
         loc_vars = function(card)
@@ -667,7 +667,7 @@ local tier_1_pets = {
         cost = 3,
         rarity = 1,
         desc = {
-            "When a blind is selected,",
+            "When a {C:attention}blind{} is selected,",
             "reduce its chips by {C:inactive}#1#{}{X:chips,C:white}#2#{}{C:inactive}#3#{}"
         },
         loc_vars = function(card)
@@ -713,7 +713,7 @@ local tier_1_pets = {
         cost = 4,
         rarity = 1,
         desc = {
-            "When you buy a {C:attention}Otter{},",
+            "When you gain a {C:attention}Otter{},",
             "including this one, give",
             "{C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{} jokers +{C:mult}1{} Mult"
         },
@@ -815,7 +815,8 @@ local tier_1_pets = {
         rarity = 1,
         desc = {
             "Whenever you gain a Pigeon,",
-            "create {C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{} {C:inactive}#4#{}{C:dark_edition}#5#{} Bread Crumbs",
+            "including this one, create {C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{}",
+            "{C:inactive}#4#{}{C:dark_edition}#5#{} Bread Crumbs",
             "{C:inactive}(Must have room)"
         },
         loc_vars = function(card)
@@ -872,7 +873,7 @@ local tier_1_pets = {
                 end
             end
         end,
-    }, ----------------------------------------------------------------------------------------------------
+    },
     "j_baku_arachnei", 
     "j_axehandle_hound_arachnei", 
     "j_barghest_arachnei", 
@@ -1253,8 +1254,8 @@ local function on_enable()
     G.C.PINK_ARACHNEISAPETS = HEX("FF9999")
 
     -- add new consumable sets
-    consumable.newSet{name="Food", colour=G.C.GREEN, collection_width=nil, collection_height=nil}
-    consumable.newSet{name="Toys", colour=G.C.PINK_ARACHNEISAPETS, collection_width=nil, collection_height=nil}
+    consumable.newSet{name="Food", colour=G.C.GREEN, collection_width=6, collection_height=2}
+    consumable.newSet{name="Toys", colour=G.C.PINK_ARACHNEISAPETS, collection_width=6, collection_height=2}
 
     -- must decorate in on_enable to get proper stack
     decorate()
