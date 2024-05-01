@@ -667,43 +667,31 @@ local tier_1_pets = {
         cost = 3,
         rarity = 1,
         desc = {
-            "When a {C:attention}blind{} is selected,",
-            "reduce its chips by {C:inactive}#1#{}{X:chips,C:white}#2#{}{C:inactive}#3#{}"
+            "Reduce {C:attention}blind{} chips,",
+            "by {C:inactive}#1#{}{X:chips,C:white}#2#{}{C:inactive}#3#{}"
         },
         loc_vars = function(card)
             loc_vars = {}
             if card.ability.arachnei_sap.xp >= 6 then       -- level 3
-                loc_vars[1] = "1/2/"
-                loc_vars[2] = "3"
+                loc_vars[1] = "25/50/"
+                loc_vars[2] = "75"
                 loc_vars[3] = ""
             elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
-                loc_vars[1] = "1/"
-                loc_vars[2] = "2"
-                loc_vars[3] = "/3"
+                loc_vars[1] = "25/"
+                loc_vars[2] = "50"
+                loc_vars[3] = "/75"
             else                                            -- level 1
                 loc_vars[1] = ""
-                loc_vars[2] = "1"
-                loc_vars[3] = "/2/3"
+                loc_vars[2] = "25"
+                loc_vars[3] = "/50/75"
             end
             return loc_vars
         end,
+        config = {extra={damage=25}},
         calculate_joker_effect = function(card, context)
-            if card.config.center.key == "j_mosquito_arachnei" and context.setting_blind and not card.getting_sliced then
-                G.E_MANAGER:add_event(Event({
-                    func = function()
-                        G.E_MANAGER:add_event(Event({
-                            func = function()
-                                G.GAME.blind:disable()
-                                play_sound('timpani')
-                                delay(0.4)
-                                return true 
-                            end,
-                        }))
-                        card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
-                        return true 
-                    end,
-                }))
-                ease_blind_chips(-get_level(card.ability.arachnei_sap.xp))
+            if card.config.center.key == "j_mosquito_arachnei" and context.first_hand_drawn then
+                ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
             end
         end
     }, 
@@ -748,7 +736,7 @@ local tier_1_pets = {
                             end
                         end
                         for k=1, get_level(G.jokers.cards[i].ability.arachnei_sap.xp) do
-                            local upgrade_card = G.jokers.cards[pseudorandom_element(candidates, pseudoseed(G.GAME.round..k..'sapets_ant_proc'))]
+                            local upgrade_card = G.jokers.cards[pseudorandom_element(candidates, pseudoseed(G.GAME.round..k..'sapets_otter_proc'))]
                             ease_sap_mult(upgrade_card, card.ability.extra.mult)
                             card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
                                 message = localize('k_upgrade_ex'),
@@ -766,7 +754,7 @@ local tier_1_pets = {
                     end
                 end
                 for k=1, get_level(card.ability.arachnei_sap.xp) do
-                    local upgrade_card = G.jokers.cards[pseudorandom_element(candidates, pseudoseed(G.GAME.round..k..'sapets_ant_proc'))]
+                    local upgrade_card = G.jokers.cards[pseudorandom_element(candidates, pseudoseed(G.GAME.round..k..'sapets_otter_proc'))]
                     ease_sap_mult(upgrade_card, card.ability.extra.mult)
                     card_eval_status_text(upgrade_card, 'extra', nil, nil, nil, {
                         message = localize('k_upgrade_ex'),
@@ -816,7 +804,7 @@ local tier_1_pets = {
         desc = {
             "Whenever you gain a Pigeon,",
             "including this one, create {C:inactive}#1#{}{C:attention}#2#{}{C:inactive}#3#{}",
-            "{C:inactive}#4#{}{C:dark_edition}#5#{} Bread Crumbs",
+            "{C:inactive}#4#{}{C:dark_edition}#5#{} {C:green}Bread Crumbs{}",
             "{C:inactive}(Must have room)"
         },
         loc_vars = function(card)
@@ -840,6 +828,15 @@ local tier_1_pets = {
             end
             return loc_vars
         end,
+        tooltip = {
+            {
+                name = "Bread Crumbs",
+                text = {
+                    "Give up to {C:attention}2{} cards",
+                    "+{C:mult}1{} Mult and +{C:chips}1{} Chips"
+                },
+            },
+        },
         config = {extra=1},
         add_to_deck_effect = function(card, from_debuff)
             if card.config.center.key == "j_pigeon_arachnei" then
@@ -874,8 +871,92 @@ local tier_1_pets = {
             end
         end,
     },
-    "j_baku_arachnei", 
-    "j_axehandle_hound_arachnei", 
+    {
+        id = "j_baku_arachnei",
+        name = "Baku",
+        cost = 6,
+        rarity = 3,
+        desc = {
+            "Debuffed cards in the first",
+            "played hand are no longer",
+            "debuffed. They gain +{C:inactive}#1#{}{C:mult}#2#{}{C:inactive}#3#{} Mult"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2/3"
+            end
+            return loc_vars
+        end,
+        config = {extra={mult=1}},
+        calculate_joker_effect = function(card, context)
+            -- first hand played effect
+            if card.config.center.key == "j_baku_arachnei" and G.GAME.current_round.hands_played == 0 and context.before then
+                for i=1, #G.play.cards do
+                    if G.play.cards[i].debuff then
+                        G.play.cards[i]:set_debuff(false)
+                        card_eval_status_text(G.play.cards[i], 'extra', nil, nil, nil, {
+                            message = "Restored!"
+                        })
+                        ease_sap_mult(G.play.cards[i], card.ability.extra.mult * get_level(card.ability.arachnei_sap.xp))
+                        card_eval_status_text(G.play.cards[i], 'extra', nil, nil, nil, {
+                            message = "Upgrade!",
+                            colour = G.C.MULT
+                        })
+                    end
+                end
+            end
+            -- visual effect for first hand
+            if card.config.center.key == "j_baku_arachnei" and context.first_hand_drawn and not context.blueprint then
+                local eval = function() return G.GAME.current_round.hands_played == 0 end
+                juice_card_until(card, eval, true)
+            end
+        end
+    }, 
+    {
+        id = "j_axehandle_hound_arachnei",
+        name = "Axehandle Hound",
+        cost = 4,
+        rarity = 2,
+        desc = {
+            "Reduce {C:attention}Boss Blind{} chips",
+            "by {C:inactive}#1#{}{X:chips,C:white}#2#{}{C:inactive}#3#{}"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "100/200/"
+                loc_vars[2] = "300"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "100/"
+                loc_vars[2] = "200"
+                loc_vars[3] = "/300"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "100"
+                loc_vars[3] = "/200/300"
+            end
+            return loc_vars
+        end,
+        config = {extra={damage=100}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_axehandle_hound_arachnei" and context.first_hand_drawn and G.GAME.blind:get_type() == 'Boss' then
+                ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Chopped!"})
+            end
+        end
+    }, 
     "j_barghest_arachnei", 
     "j_tsuchinoko_arachnei", 
     "j_murmel_arachnei", 
@@ -908,7 +989,7 @@ local tier_1_pets = {
             end
         end,
         calculate_joker_effect = function(card, context)
-            if card.config.center.key == 'j_basilisk_arachnei' and context.setting_blind and not card.getting_sliced and not context.blueprint and context.blind.boss then
+            if card.config.center.key == 'j_basilisk_arachnei' and context.first_hand_drawn and not context.blueprint and G.GAME.blind:get_type() == 'Boss' then
                 G.E_MANAGER:add_event(Event({
                     func = function()
                         G.E_MANAGER:add_event(Event({
