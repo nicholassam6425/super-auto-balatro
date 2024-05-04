@@ -1006,7 +1006,7 @@ local tier_1_pets = {
             end
         end
     }, 
-    "j_murmel_arachnei", 
+    "j_murmel_arachnei",
     "j_alchemedes_arachnei", 
     "j_warg_arachnei", 
     "j_bunyip_arachnei", 
