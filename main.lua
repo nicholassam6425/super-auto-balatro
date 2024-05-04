@@ -958,7 +958,54 @@ local tier_1_pets = {
         end
     }, 
     "j_barghest_arachnei", 
-    "j_tsuchinoko_arachnei", 
+    {
+        id = "j_tsuchinoko_arachnei",
+        name = "Tsuchinoko",
+        cost = 3,
+        rarity = 1,
+        desc = {
+            "Become pinned and gain +{C:inactive}#1#{}{C:purple}#2#{}{C:inactive}#3#{}",
+            "{C:purple}experience{} when a Blind is selected.",
+            "Become unpinned when a Blind is defeated"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2/3"
+            end
+            return loc_vars
+        end,
+        config = {extra={exp=1}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_tsuchinoko_arachnei" and context.first_hand_drawn then
+                if not card.pinned then
+                    card.pinned = true
+                    card_eval_status_text(card, 'extra', nil, nil, nil, {
+                        message = "Pinned!"
+                    })
+                end
+                ease_sap_xp(card, card.ability.extra.exp * get_level(card.ability.arachnei_sap.xp))
+            end
+            if card.config.center.key == "j_tsuchinoko_arachnei" and context.end_of_round and not context.repetition and not context.individual then
+                if card.pinned then
+                    card.pinned = false
+                    card_eval_status_text(card, 'extra', nil, nil, nil, {
+                        message = "Unpinned!"
+                    })
+                end
+            end
+        end
+    }, 
     "j_murmel_arachnei", 
     "j_alchemedes_arachnei", 
     "j_warg_arachnei", 
