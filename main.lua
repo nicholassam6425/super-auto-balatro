@@ -1006,7 +1006,54 @@ local tier_1_pets = {
             end
         end
     }, 
-    "j_murmel_arachnei",
+    {
+        id = "j_murmel_arachnei",
+        name = "Murmel",
+        cost = 4,
+        rarity = 1,
+        desc = {
+            "Whenever a joker {C:attention}levels up{}, gain",
+            "{C:inactive}#1#{}{X:mult,C:white}#2#{}{C:inactive}#3#{} Mult. Set XMult to",
+            "1 when {C:attention}Boss Blind{} is defeated"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "0.25/0.5/"
+                loc_vars[2] = "X0.75"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "0.25/"
+                loc_vars[2] = "X0.5"
+                loc_vars[3] = "/0.75"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "X0.25"
+                loc_vars[3] = "/0.5/0.75"
+            end
+            return loc_vars
+        end,
+        config = {extra={xmult=0.25}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_murmel_arachnei" then
+                if context.level_up and not context.blueprint then
+                    card.ability.arachnei_sap.xmult = card.ability.arachnei_sap.xmult + (card.ability.extra.xmult * get_level(card.ability.arachnei_sap.xp))
+                    card_eval_status_text(card, 'extra', nil, nil, nil, {message = localize('k_upgrade_ex')})
+                    return {
+                        message = localize('k_upgrade_ex'),
+                        card = card
+                    }
+                end
+                if context.end_of_round and G.GAME.blind.boss and card.ability.arachnei_sap.xmult > 1  and not context.blueprint then
+                    card.ability.arachnei_sap.xmult = 1
+                    return {
+                        message = localize('k_reset'),
+                        colour = G.C.RED
+                    }
+                end
+            end
+        end
+    },
     "j_alchemedes_arachnei", 
     "j_warg_arachnei", 
     "j_bunyip_arachnei", 
