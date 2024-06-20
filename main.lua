@@ -211,6 +211,8 @@ local function decorate()
                 self.ability.arachnei_sap = {chips=0, mult=0, xmult=1}
                 if self.config.center.set == "Joker" then
                     self.ability.arachnei_sap.xp = 1
+                    self.ability.arachnei_sap.mana = 0
+                    self.ability.arachnei_sap.trumpet = 0
                 end
                 self.config.center.arachnei_sap = self.ability.arachnei_sap
             end
@@ -255,9 +257,19 @@ local function decorate()
         -- prepend SAP tooltip to info
         if self.config.center.set == "Joker" and 
         G.STATE ~= G.STATES.MENU and G.STATE ~= G.STATES.TUTORIAL then
-            sap_stats_node = {name="SAP Stats"}
+            local sap_stats_node = {name="SAP Stats"}
             localize{type='other', key="sap_stats_loc_jok", nodes=sap_stats_node, vars={self.ability.arachnei_sap.chips,self.ability.arachnei_sap.mult,self.ability.arachnei_sap.xmult,self.ability.arachnei_sap.xp}}
             table.insert(old_return.info, 1, sap_stats_node)
+            if self.ability.arachnei_sap.mana > 0 then
+                local sap_stats_mana = {name="SAP Mana"}
+                localize{type='other', key='sap_stats_loc_mana', nodes=sap_stats_mana, vars={self.ability.arachnei_sap.mana}}
+                table.insert(old_return.info, sap_stats_mana)
+            end
+            if self.ability.arachnei_sap.trumpet > 0 then
+                local sap_stats_trumpet = {name="SAP Trumpet"}
+                localize{type='other', key='sap_stats_loc_trumpet', nodes=sap_stats_trumpet, vars={self.ability.arachnei_sap.trumpet}}
+                table.insert(old_return.info, sap_stats_trumpet)
+            end
         elseif self.config.center.set == "Default" or self.config.center.set == "Enhanced" and
         G.STATE ~= G.STATES.MENU and G.STATE ~= G.STATES.TUTORIAL then
             sap_stats_node = {name="SAP Stats"}
@@ -1054,7 +1066,43 @@ local tier_1_pets = {
             end
         end
     },
-    "j_alchemedes_arachnei", 
+    {
+        id = "j_alchemedes_arachnei",
+        name = "Alchemedes",
+        cost = 4,
+        rarity = 1,
+        desc = {
+            "Give another random joker {C:mana_arachneisapets}+{}{C:inactive}#1#{}{C:mana_arachneisapets}#2#{}{C:inactive}#3#{}",
+            "{C:mana_arachneisapets}Mana{} when a {C:attention}Blind{} is selected"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2/3"
+            end
+            return loc_vars
+        end,
+        config = {extra={mana=1}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_alchemedes_arachnei" then
+                if context.first_hand_drawn then
+                    local mana_card = pseudorandom_element(G.jokers.cards, pseudoseed(G.GAME.round..card.unique_val..'sapets_alchemedes_proc'))
+                    mana_card.ability.arachnei_sap.mana = mana_card.ability.arachnei_sap.mana + (card.ability.extra.mana * get_level(card.ability.arachnei_sap.xp))
+                    card_eval_status_text(mana_card, 'extra', nil, nil, nil, {message = "+1 Mana", colour = G.C.MANA_ARACHNEISAPETS})
+                end
+            end
+        end
+    }, 
     "j_warg_arachnei", 
     "j_bunyip_arachnei", 
     "j_sneaky_egg_arachnei", 
@@ -1203,7 +1251,7 @@ local token_pets = {
         desc = {
             "{C:inactive}A cricket, but dead"
         },
-        config={base_stats={mult=1, chips=1, xmult=1, xp=1}},
+        config={base_stats={mult=1, chips=1, xmult=1, xp=1, mana=0, trumpet=0}},
         
     }, 
     {
@@ -1215,7 +1263,7 @@ local token_pets = {
         desc = {
             "{C:inactive}A hard-working bee"
         },
-        config={base_stats={mult=1, chips=1, xmult=1, xp=1}},
+        config={base_stats={mult=1, chips=1, xmult=1, xp=1, mana=0, trumpet=0}},
         
     }, 
     "j_loyal_chinchilla_arachnei", "j_cracked_egg_arachnei", "j_dirty_rat_arachnei",
@@ -1414,23 +1462,55 @@ local function on_enable()
         name_parsed = {},
         text_parsed = {}
     }
+    local sap_stats_loc_mana = {
+        name = "SAP Mana",
+        text = {
+            "Mana: {C:mana_arachneisapets}#1#"
+        },
+        name_parsed = {},
+        text_parsed = {}
+    }
+    local sap_stats_loc_trumpet = {
+        name = "SAP Trumpet",
+        text = {
+            "Trumpet: {C:attention}#1#"
+        },
+        name_parsed = {},
+        text_parsed = {}
+    }
     for _, line in ipairs(sap_stats_loc_card.text) do
         sap_stats_loc_card.text_parsed[#sap_stats_loc_card.text_parsed+1] = loc_parse_string(line)
     end
     for _, line in ipairs(sap_stats_loc_jok.text) do
         sap_stats_loc_jok.text_parsed[#sap_stats_loc_jok.text_parsed+1] = loc_parse_string(line)
     end
+    for _, line in ipairs(sap_stats_loc_mana.text) do
+        sap_stats_loc_mana.text_parsed[#sap_stats_loc_mana.text_parsed+1] = loc_parse_string(line)
+    end
+    for _, line in ipairs(sap_stats_loc_trumpet.text) do
+        sap_stats_loc_trumpet.text_parsed[#sap_stats_loc_trumpet.text_parsed+1] = loc_parse_string(line)
+    end
     G.localization.descriptions.Other.sap_stats_loc_jok = sap_stats_loc_jok
     G.localization.descriptions.Other.sap_stats_loc_card = sap_stats_loc_card
+    G.localization.descriptions.Other.sap_stats_loc_mana = sap_stats_loc_mana
+    G.localization.descriptions.Other.sap_stats_loc_trumpet = sap_stats_loc_trumpet
     -- adds {"+#1# Chips"} loc object. just skipped the parsing
     G.localization.misc.v_dictionary_parsed.a_chips_text_arachneisapets = {{control={},strings={"+",{1}, " Chips"}}}
 
-    -- add pink (for toys badge colour)
-    G.C.PINK_ARACHNEISAPETS = HEX("FF9999")
+    -- add colours
+    G.C.FOOD_ARACHNEISAPETS = HEX("FF9999")
+    G.C.MANA_ARACHNEISAPETS = HEX("0059D7")
+
+    -- add
+    if not G.ARGS.LOC_COLOURS then
+        loc_colour(red)
+    end
+    G.ARGS.LOC_COLOURS.mana_arachneisapets = G.C.MANA_ARACHNEISAPETS
+    G.ARGS.LOC_COLOURS.food_arachneisapets = G.C.FOOD_ARACHNEISAPETS
 
     -- add new consumable sets
     consumable.newSet{name="Food", colour=G.C.GREEN, collection_width=6, collection_height=2}
-    consumable.newSet{name="Toys", colour=G.C.PINK_ARACHNEISAPETS, collection_width=6, collection_height=2}
+    consumable.newSet{name="Toys", colour=G.C.FOOD_ARACHNEISAPETS, collection_width=6, collection_height=2}
 
     -- must decorate in on_enable to get proper stack
     decorate()
