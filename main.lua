@@ -69,6 +69,13 @@ local function ease_sap_xp(card, value, from_eval)
         G.jokers.cards[i]:calculate_joker({xp_gained = true, other_card = G.jokers.cards[i]})
     end
 end
+
+local function ease_sap_mana(card, value, from_eval)
+    card.ability.arachnei_sap.mana = card.ability.arachnei_sap.mana + value
+    for i=1, #G.jokers.cards do
+        local eval = G.jokers.cards[i]:calculate_joker{ease_mana = {value=value}, individual=true, other_card=card, from_eval=from_eval}
+    end
+end
 -- summon a token then give it all the token things if it was spawned during a blind
 -- then start eval step
 local function summon_token(id, level)
@@ -90,7 +97,6 @@ local function summon_token(id, level)
 end
 -- give consumable
 local function give_consumable(id, ignore_space)
-    logger:info((ignore_space) or (G.consumeables.config.card_limit - #G.consumeables.cards >= 1))
     if (ignore_space) or (G.consumeables.config.card_limit - #G.consumeables.cards >= 1) then
         local consumable = create_card(nil, G.consumeables, nil, nil, nil, nil, id)
         consumable:add_to_deck()
@@ -142,8 +148,8 @@ end
 ----------------------
 G.FUNCS.can_absorb_card = function(e)
     for i=1, #G.jokers.cards do
-        -- find card by unique_val, then check if the card to the right is the same card 
-        if G.jokers.cards[i].unique_val == e.config.ref_table.unique_val then
+        -- find card by id, then check if the card to the right is the same card 
+        if G.jokers.cards[i].ID == e.config.ref_table.ID then
             if G.jokers.cards[i+1] and G.jokers.cards[i+1].config.center.key == e.config.ref_table.config.center.key then
                 e.config.colour = G.C.PURPLE
                 e.config.button = 'absorb_card'
@@ -158,9 +164,9 @@ end
 G.FUNCS.absorb_card = function(e)
     local card = e.config.ref_table
     for i=1, #G.jokers.cards do
-        -- find card by unique_val, then dissolve card to the right & increase card xp by
+        -- find card by ID, then dissolve card to the right & increase card xp by
         -- absorbed card's xp
-        if G.jokers.cards[i].unique_val == card.unique_val then
+        if G.jokers.cards[i].ID == card.ID then
             card:juice_up(0.8, 0.8)
             if G.jokers.cards[i+1].edition and not card.edition then -- avoid worst case 
                 card:set_edition(G.jokers.cards[i+1].edition)
@@ -604,10 +610,10 @@ local tier_1_pets = {
         end,
         config = {extra={mult=1}},
         calculate_joker_effect = function(card, context)
-            if card.config.center.key == "j_fish_arachnei" and context.level_up and context.other_card.unique_val == card.unique_val then
+            if card.config.center.key == "j_fish_arachnei" and context.level_up and context.other_card.ID == card.ID then
                 local candidates = {}
                 for i=1, #G.jokers.cards do
-                    if card.unique_val ~= G.jokers.cards[i].unique_val then
+                    if card.ID ~= G.jokers.cards[i].ID then
                         table.insert(candidates, i)
                     end
                 end
@@ -761,7 +767,7 @@ local tier_1_pets = {
                 card:juice_up(0.8, 0.8)
                 local candidates = {}
                 for k=1, #G.jokers.cards do
-                    if G.jokers.cards[k].unique_val ~= card.unique_val then
+                    if G.jokers.cards[k].ID ~= card.ID then
                         table.insert(candidates, k)
                     end
                 end
@@ -802,7 +808,7 @@ local tier_1_pets = {
             return loc_vars
         end,
         calculate_joker_effect = function(card, context)
-            if card.config.center.key == "j_pig_arachnei" and context.level_up and other_card.unique_val == card.unique_val then
+            if card.config.center.key == "j_pig_arachnei" and context.level_up and other_card.ID == card.ID then
                 -- on level up, re-calculate sell_cost
                 card:set_cost()
             end
@@ -1096,14 +1102,51 @@ local tier_1_pets = {
         calculate_joker_effect = function(card, context)
             if card.config.center.key == "j_alchemedes_arachnei" then
                 if context.first_hand_drawn then
-                    local mana_card = pseudorandom_element(G.jokers.cards, pseudoseed(G.GAME.round..card.unique_val..'sapets_alchemedes_proc'))
-                    mana_card.ability.arachnei_sap.mana = mana_card.ability.arachnei_sap.mana + (card.ability.extra.mana * get_level(card.ability.arachnei_sap.xp))
-                    card_eval_status_text(mana_card, 'extra', nil, nil, nil, {message = "+1 Mana", colour = G.C.MANA_ARACHNEISAPETS})
+                    local mana_card = pseudorandom_element(G.jokers.cards, pseudoseed(G.GAME.round..'sapets_alchemedes_proc'))
+                    local value = (card.ability.extra.mana * get_level(card.ability.arachnei_sap.xp))
+                    ease_sap_mana(mana_card, value)
+                    card_eval_status_text(mana_card, 'extra', nil, nil, nil, {
+                        message = localize{type='variable', key='a_mana_text_arachneisapets', vars = {value}}, 
+                        colour = G.C.MANA_ARACHNEISAPETS
+                    })
                 end
             end
         end
     }, 
-    "j_warg_arachnei", 
+    {
+        id = "j_warg_arachnei",
+        name = "Warg",
+        cost = 4,
+        rarity = 1,
+        desc = {
+            "When this gains {C:mana_arachneisapets}Mana{}, reduce current",
+            "{C:attention}Blind{}'s chip requirement by {C:inactive}#1#{}{X:chips,C:white}#2#{}{C:inactive}#3#{}"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "100/200/"
+                loc_vars[2] = "300"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "100/"
+                loc_vars[2] = "200"
+                loc_vars[3] = "/300"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "100"
+                loc_vars[3] = "/200/300"
+            end
+            return loc_vars
+        end,
+        config = {extra={damage=100}},
+        calculate_joker_effect = function(card, context)
+            if context.ease_mana and card.config.center.key == "j_warg_arachnei" and card.ID == context.other_card.ID then
+                ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
+            end
+        end
+    }, 
     "j_bunyip_arachnei", 
     "j_sneaky_egg_arachnei", 
     "j_cuddle_toad_arachnei", 
@@ -1495,7 +1538,11 @@ local function on_enable()
     G.localization.descriptions.Other.sap_stats_loc_mana = sap_stats_loc_mana
     G.localization.descriptions.Other.sap_stats_loc_trumpet = sap_stats_loc_trumpet
     -- adds {"+#1# Chips"} loc object. just skipped the parsing
-    G.localization.misc.v_dictionary_parsed.a_chips_text_arachneisapets = {{control={},strings={"+",{1}, " Chips"}}}
+    G.localization.misc.v_dictionary_parsed.a_chips_text_arachneisapets = {{control={},strings={"+",{1}," Chips"}}}
+    -- adds {"+#1# Mana"} loc object
+    G.localization.misc.v_dictionary_parsed.a_mana_text_arachneisapets = {{control={},strings={"+",{1}," Mana"}}}
+    -- adds {"+#1# Trumpet"} loc object
+    G.localization.misc.v_dictionary_parsed.a_trumpet_text_arachneisapets = {{control={},strings={"+",{1}," Trumpet"}}}
 
     -- add colours
     G.C.FOOD_ARACHNEISAPETS = HEX("FF9999")
