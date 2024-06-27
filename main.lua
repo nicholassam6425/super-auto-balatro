@@ -8,12 +8,36 @@ local configs = {
     remove_other_jokers = false, -- unimplemented for now
 }
 
+-- which mod loader is being used?
+local a,b = pcall(function()
+    if logger then 
+        return true 
+    else
+        return false
+    end
+end)
+local balamod_exists = a and b
+a, b = pcall(function()
+    if SMODS then
+        return true
+    else
+        return false
+    end
+end)
+local smods_exists = a and b
+
 ----------------------
 -- helper functions --
 ----------------------
+-- return -1 or 1 if n is negative or positive
 local function sign(n)
     return n>0 and 1 or n<0 and -1 or 1
 end
+-- find distance between two points
+local function dist(from, to)
+    return math.sqrt((to.x - from.x)^2 + (to.y - from.y)^2)
+end
+
 -- change "card"s SAP chips value by "value", then start an eval step
 local function ease_sap_chips(card, value, from_eval)
     card.ability.arachnei_sap.chips = card.ability.arachnei_sap.chips + value
@@ -155,6 +179,7 @@ end
 Particle = Moveable:extend()
 
 function Particle:init(X, Y, W, H, config)
+    setmetatable(self, Particle)
     Moveable.init(self, X, Y, W, H)
 
     self.fill = config.fill or true
@@ -169,10 +194,10 @@ function Particle:init(X, Y, W, H, config)
     self.timer = config.timer or 0.5
     self.timer_type = (self.created_on_pause and 'REAL') or config.timer_type or 'REAL'
     self.last_real_time = G.TIMERS[self.timer_type] - self.timer
-    self.last_drawn = 0
     self.fade_alpha = 0
     self.speed = config.speed or 0
     self.properties = {}                     -- holds the actual graphical elements of the particle
+    self.r_vel = 0.2*(0.5 - math.random())
     self.scale = config.scale or 1
     self.speed = config.speed or 1
     self.colour = config.colour or G.C.WHITE -- fill colour
@@ -183,6 +208,15 @@ function Particle:init(X, Y, W, H, config)
         local ang = math.abs(math.atan(h_ang/v_ang))
         local h_mag = sign(h_ang) * self.speed * math.sin(ang)
         local v_mag = sign(v_ang) * self.speed * math.cos(ang)
+        local y_vel = nil
+        local y_accel = nil
+        if config.y_vel then
+            y_vel = config.y_vel
+            -- (h_ang/h_mag) = time_taken (s)
+            -- (time_taken)/2 = y_peak_time
+            -- y_accel * y_peak_time = y_vel
+            y_accel = -1*y_vel/((h_ang/h_mag)/2)
+        end
         self.path = {
             h_ang = h_ang,
             v_ang = v_ang,
@@ -190,30 +224,27 @@ function Particle:init(X, Y, W, H, config)
             h_mag = h_mag,
             v_mag = v_mag,
             dist = math.sqrt(h_ang^2 + v_ang^2),
-            to_offset = {x=h_ang,y=v_ang}
+            to_offset = {x=h_ang,y=v_ang},
+            y_vel = y_vel,
+            y_accel = y_accel,
+            remove_on_dest = config.remove_on_dest
         }
     end
-
     self.properties = {
         draw = true,
         facing = 0,
         age = 0,
-        velocity = self.speed*0.7,
-        r_vel = 0,
-        e_prev = 0,
-        e_curr = 0,
         scale = self.scale,
         time = G.TIMERS[self.timer_type],
         colour = self.colour,
-        offset = {x=0,y=0}
+        offset = {x=0,y=0},
     }
 
     self:update(15/60)
     self:move(15/60)
 
-    if getmetatable(self) == Particle then 
-        table.insert(G.I.MOVEABLE, self)
-    end
+    table.insert(G.I.POPUP, self)
+
     return self
 end
 
@@ -221,19 +252,29 @@ function Particle:update(dt)
     if G.SETTINGS.paused and not self.created_on_pause then self.last_real_time = G.TIMERS[self.timer_type] ; return end
     self.last_real_time = self.last_real_time + self.timer
     local new_offset = {x=0,y=0}
-    if self.path and self.travelled < self.path.dist then
-        new_offset = {
-            x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
-            y=self.properties.offset.y + self.path.v_mag*dt*G.SPEEDFACTOR
-        }
-    elseif self.path and self.travelled > self.path.dist then
+    self.travelled = self.travelled + self.speed*dt*G.SPEEDFACTOR
+    if self.path and self.travelled > self.path.dist then
         new_offset = {
             x=self.path.to_offset.x,
             y=self.path.to_offset.y
         }
+    elseif self.path and self.path.y_vel and self.travelled < self.path.dist then
+        self.path.y_vel = self.path.y_vel + self.path.y_accel*dt*G.SPEEDFACTOR
+        new_offset = {
+            x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
+            y=self.properties.offset.y + (self.path.v_mag+self.path.y_vel)*dt*G.SPEEDFACTOR
+        }
+    elseif self.path and self.travelled < self.path.dist then
+            new_offset = {
+                x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
+                y=self.properties.offset.y + self.path.v_mag*dt*G.SPEEDFACTOR
+            }
     end
     self.properties.offset = new_offset
-    self.travelled = self.travelled + self.speed*dt*G.SPEEDFACTOR
+    self.properties.facing = self.properties.facing + self.r_vel*dt*G.SPEEDFACTOR
+    if self.path and self.travelled > self.path.dist and self.path.remove_on_dest then
+        self:remove()
+    end
 end
 
 function Particle:move(dt)
@@ -245,7 +286,9 @@ function Particle:move(dt)
 
     self.properties.draw = true
     self.properties.age = self.properties.age + dt
-    
+    if self.properties.age > 100 then
+        self:remove()
+    end
 end
 
 function Particle:draw(alpha)
@@ -280,19 +323,24 @@ function Particle:remove()
 
     Moveable.remove(self)
 end
---------------------------------------------------------------
---------------------------------------------------------------
---------------------------------------------------------------
---------------------------------------------------------------
+-- move particle in a straight line from `from` to `to`
+-- config.time is measured in seconds (in 1x game speed)
+-- config.y_vel: -ve moves upwards
 function move_particle(from, to, config)
-    config = config or {}
-    local speed = config.speed
-    if not speed and config.time then
-        
+    local config = config or {}
+    if config.speed and config.time then return end
+    if not config.speed and config.time then
+        local dist = dist(from, to)
+        config.speed = dist/config.time
     end
-    local particle = Particle(from.x,from.y,1,1,{colour=G.C.GREEN, path={from=from,to=to},speed=config.speed})
+    local particle = Particle(from.x,from.y,1,1,{colour=config.colour, path={from=from,to=to},speed=config.speed,y_vel=config.y_vel,scale=config.scale,remove_on_dest=config.remove_on_dest})
     return particle
 end
+
+--------------------------------------------------------------
+--------------------------------------------------------------
+--------------------------------------------------------------
+--------------------------------------------------------------
 ----------------------
 -- button callbacks --
 ----------------------
@@ -858,8 +906,22 @@ local tier_1_pets = {
         config = {extra={damage=25}},
         calculate_joker_effect = function(card, context)
             if card.config.center.key == "j_mosquito_arachnei" and context.first_hand_drawn then
-                ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    func = function()
+                        move_particle({x=card.T.x, y=card.T.y}, {x=G.GAME.blind.T.x, y=G.GAME.blind.T.y}, {speed=4,y_vel=-2,colour=G.C.WHITE,scale=0.4,remove_on_dest=true})
+                        return true 
+                    end,
+                }))
                 card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    func = function()
+                        G.GAME.blind:juice_up(1,1)
+                        ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                        return true 
+                    end,
+                }))
             end
         end
     }, 
