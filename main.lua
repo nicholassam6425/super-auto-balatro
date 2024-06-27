@@ -11,7 +11,9 @@ local configs = {
 ----------------------
 -- helper functions --
 ----------------------
-
+local function sign(n)
+    return n>0 and 1 or n<0 and -1 or 1
+end
 -- change "card"s SAP chips value by "value", then start an eval step
 local function ease_sap_chips(card, value, from_eval)
     card.ability.arachnei_sap.chips = card.ability.arachnei_sap.chips + value
@@ -142,6 +144,154 @@ end
 -- get level from xp
 local function get_level(xp)
     return math.min(math.floor(xp/3)+1, 3)
+end
+
+--------------------------------------------------------------
+--------------------------------------------------------------
+--------------------------------------------------------------
+--------------------------------------------------------------
+-- custom particle system (oh god...)
+---@class Particle: Moveable
+Particle = Moveable:extend()
+
+function Particle:init(X, Y, W, H, config)
+    Moveable.init(self, X, Y, W, H)
+
+    self.fill = config.fill or true
+    self.padding = config.padding or 0
+
+    self.states.hover.can = false
+    self.states.click.can = false
+    self.states.collide.can = false
+    self.states.drag.can = false
+    self.states.release_on.can = false
+
+    self.timer = config.timer or 0.5
+    self.timer_type = (self.created_on_pause and 'REAL') or config.timer_type or 'REAL'
+    self.last_real_time = G.TIMERS[self.timer_type] - self.timer
+    self.last_drawn = 0
+    self.fade_alpha = 0
+    self.speed = config.speed or 0
+    self.properties = {}                     -- holds the actual graphical elements of the particle
+    self.scale = config.scale or 1
+    self.speed = config.speed or 1
+    self.colour = config.colour or G.C.WHITE -- fill colour
+    self.travelled = 0
+    if config.path then
+        local h_ang = config.path.to.x - config.path.from.x
+        local v_ang = config.path.to.y - config.path.from.y
+        local ang = math.abs(math.atan(h_ang/v_ang))
+        local h_mag = sign(h_ang) * self.speed * math.sin(ang)
+        local v_mag = sign(v_ang) * self.speed * math.cos(ang)
+        self.path = {
+            h_ang = h_ang,
+            v_ang = v_ang,
+            ang = ang,
+            h_mag = h_mag,
+            v_mag = v_mag,
+            dist = math.sqrt(h_ang^2 + v_ang^2),
+            to_offset = {x=h_ang,y=v_ang}
+        }
+    end
+
+    self.properties = {
+        draw = true,
+        facing = 0,
+        age = 0,
+        velocity = self.speed*0.7,
+        r_vel = 0,
+        e_prev = 0,
+        e_curr = 0,
+        scale = self.scale,
+        time = G.TIMERS[self.timer_type],
+        colour = self.colour,
+        offset = {x=0,y=0}
+    }
+
+    self:update(15/60)
+    self:move(15/60)
+
+    if getmetatable(self) == Particle then 
+        table.insert(G.I.MOVEABLE, self)
+    end
+    return self
+end
+
+function Particle:update(dt)
+    if G.SETTINGS.paused and not self.created_on_pause then self.last_real_time = G.TIMERS[self.timer_type] ; return end
+    self.last_real_time = self.last_real_time + self.timer
+    local new_offset = {x=0,y=0}
+    if self.path and self.travelled < self.path.dist then
+        new_offset = {
+            x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
+            y=self.properties.offset.y + self.path.v_mag*dt*G.SPEEDFACTOR
+        }
+    elseif self.path and self.travelled > self.path.dist then
+        new_offset = {
+            x=self.path.to_offset.x,
+            y=self.path.to_offset.y
+        }
+    end
+    self.properties.offset = new_offset
+    self.travelled = self.travelled + self.speed*dt*G.SPEEDFACTOR
+end
+
+function Particle:move(dt)
+    if G.SETTINGS.paused and not self.created_on_pause then return end
+
+    Moveable.move(self, dt)
+
+    if self.timer_type ~= 'REAL' then dt = dt*G.SPEEDFACTOR end
+
+    self.properties.draw = true
+    self.properties.age = self.properties.age + dt
+    
+end
+
+function Particle:draw(alpha)
+    alpha = alpha or 1
+    prep_draw(self, 1)
+    love.graphics.translate(self.T.w/2, self.T.h/2)
+    if self.properties.draw then 
+        love.graphics.push()
+        love.graphics.setColor(self.properties.colour[1], self.properties.colour[2], self.properties.colour[3], self.properties.colour[4]*alpha*(1-self.fade_alpha))                
+        love.graphics.translate(self.properties.offset.x, self.properties.offset.y)
+        love.graphics.rotate(self.properties.facing)
+        
+        love.graphics.rectangle('fill', -self.properties.scale/2, -self.properties.scale/2, self.properties.scale, self.properties.scale) -- origin in the middle
+        love.graphics.pop()
+    end
+    love.graphics.pop()
+
+    add_to_drawhash(self)
+    self:draw_boundingrect()
+end
+
+function Particle:remove()
+    if self.role.major then 
+        for k, v in pairs(self.role.major.children) do
+            if v == self and type(k) == 'number' then
+                table.remove(self.role.major.children, k)
+            end
+        end
+    end
+
+    remove_all(self.children)
+
+    Moveable.remove(self)
+end
+--------------------------------------------------------------
+--------------------------------------------------------------
+--------------------------------------------------------------
+--------------------------------------------------------------
+function move_particle(from, to, config)
+    config = config or {}
+    local speed = config.speed
+    if not speed and config.time then
+        
+    end
+    local particle = Particle(from.x,from.y,1,1,{colour=G.C.GREEN, path={from=from,to=to},speed=config.speed})
+    return particle
 end
 ----------------------
 -- button callbacks --
@@ -1147,7 +1297,43 @@ local tier_1_pets = {
             end
         end
     }, 
-    "j_bunyip_arachnei", 
+    {
+        id = "j_bunyip_arachnei",
+        name = "Bunyip",
+        cost = 4,
+        rarity = 1,
+        desc = {
+            "This joker gains {C:inactive}#1#{}{C:chips}#2#{}{C:inactive}#3#{} ",
+            "Chips when {C:attention}rerolling{} the shop"
+        },
+        loc_vars = function(card)
+            loc_vars = {}
+            if card.ability.arachnei_sap.xp >= 6 then       -- level 3
+                loc_vars[1] = "1/2/"
+                loc_vars[2] = "3"
+                loc_vars[3] = ""
+            elseif card.ability.arachnei_sap.xp >= 3 then   -- level 2
+                loc_vars[1] = "1/"
+                loc_vars[2] = "2"
+                loc_vars[3] = "/3"
+            else                                            -- level 1
+                loc_vars[1] = ""
+                loc_vars[2] = "1"
+                loc_vars[3] = "/2/3"
+            end
+            return loc_vars
+        end,
+        config = {extra={chips=1}},
+        calculate_joker_effect = function(card, context)
+            if card.config.center.key == "j_bunyip_arachnei" and context.reroll_shop then
+                ease_sap_chips(card, card.ability.extra.chips * get_level(card.ability.arachnei_sap.xp))
+                card_eval_status_text(card, 'extra', nil, nil, nil, {
+                    message = localize{type='variable', key='a_chips_text_arachneisapets', vars = {card.ability.extra.chips}},
+                    colour = G.C.CHIPS
+                })
+            end
+        end
+    }, 
     "j_sneaky_egg_arachnei", 
     "j_cuddle_toad_arachnei", 
     {
