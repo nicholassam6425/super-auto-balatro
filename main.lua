@@ -197,7 +197,7 @@ function Particle:init(X, Y, W, H, config)
     self.fade_alpha = 0
     self.speed = config.speed or 0
     self.properties = {}                     -- holds the actual graphical elements of the particle
-    self.r_vel = 0.2*(0.5 - math.random())
+    self.r_vel = 2*(0.5 - math.random())
     self.scale = config.scale or 1
     self.speed = config.speed or 1
     self.colour = config.colour or G.C.WHITE -- fill colour
@@ -253,26 +253,28 @@ function Particle:update(dt)
     self.last_real_time = self.last_real_time + self.timer
     local new_offset = {x=0,y=0}
     self.travelled = self.travelled + self.speed*dt*G.SPEEDFACTOR
-    if self.path and self.travelled > self.path.dist then
-        new_offset = {
-            x=self.path.to_offset.x,
-            y=self.path.to_offset.y
-        }
-    elseif self.path and self.path.y_vel and self.travelled < self.path.dist then
-        self.path.y_vel = self.path.y_vel + self.path.y_accel*dt*G.SPEEDFACTOR
-        new_offset = {
-            x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
-            y=self.properties.offset.y + (self.path.v_mag+self.path.y_vel)*dt*G.SPEEDFACTOR
-        }
-    elseif self.path and self.travelled < self.path.dist then
+    if self.path then 
+        if self.travelled > self.path.dist then -- destination reached
+            new_offset = {
+                x=self.path.to_offset.x,
+                y=self.path.to_offset.y
+            }
+        elseif self.path.y_vel and self.travelled < self.path.dist then -- arced movement
+            self.path.y_vel = self.path.y_vel + self.path.y_accel*dt*G.SPEEDFACTOR
             new_offset = {
                 x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
-                y=self.properties.offset.y + self.path.v_mag*dt*G.SPEEDFACTOR
+                y=self.properties.offset.y + (self.path.v_mag+self.path.y_vel)*dt*G.SPEEDFACTOR
             }
+        elseif self.travelled < self.path.dist then -- straight line movement
+                new_offset = {
+                    x=self.properties.offset.x + self.path.h_mag*dt*G.SPEEDFACTOR,
+                    y=self.properties.offset.y + self.path.v_mag*dt*G.SPEEDFACTOR
+                }
+        end
     end
     self.properties.offset = new_offset
     self.properties.facing = self.properties.facing + self.r_vel*dt*G.SPEEDFACTOR
-    if self.path and self.travelled > self.path.dist and self.path.remove_on_dest then
+    if self.path and self.travelled > self.path.dist and self.path.remove_on_dest then -- if particle should be removed on arrival
         self:remove()
     end
 end
@@ -915,7 +917,6 @@ local tier_1_pets = {
                 }))
                 card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
                 G.E_MANAGER:add_event(Event({
-                    trigger = 'after',
                     func = function()
                         G.GAME.blind:juice_up(1,1)
                         ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
