@@ -1,8 +1,3 @@
--- balamod apis
-local joker = require("joker")
-local consumable = require("consumable")
-local utils = require("utils")
-
 -- configs
 local configs = {
     remove_other_jokers = false, -- unimplemented for now
@@ -911,14 +906,23 @@ local tier_1_pets = {
                 G.E_MANAGER:add_event(Event({
                     trigger = 'after',
                     func = function()
-                        move_particle({x=card.T.x, y=card.T.y}, {x=G.GAME.blind.T.x, y=G.GAME.blind.T.y}, {speed=4,y_vel=-2,colour=G.C.WHITE,scale=0.4,remove_on_dest=true})
+                        move_particle(
+                            {x=card.T.x, y=card.T.y}, 
+                            {x=G.GAME.blind.T.x, y=G.GAME.blind.T.y}, 
+                            {
+                                speed=4,
+                                y_vel=-2,
+                                colour=G.C.WHITE,
+                                scale=0.6,
+                                remove_on_dest=true}
+                        )
                         return true 
                     end,
                 }))
                 card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
                 G.E_MANAGER:add_event(Event({
                     func = function()
-                        G.GAME.blind:juice_up(1,1)
+                        G.GAME.blind:juice_up(1,0.7)
                         ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
                         return true 
                     end,
@@ -1183,12 +1187,37 @@ local tier_1_pets = {
         config = {extra={damage=100}},
         calculate_joker_effect = function(card, context)
             if card.config.center.key == "j_axehandle_hound_arachnei" and context.first_hand_drawn and G.GAME.blind:get_type() == 'Boss' then
-                ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
-                card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Chopped!"})
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    func = function()
+                        move_particle(
+                            {x=card.T.x, y=card.T.y}, 
+                            {x=G.GAME.blind.T.x, y=G.GAME.blind.T.y}, 
+                            {
+                                speed=4,
+                                y_vel=-2,
+                                colour=G.C.WHITE,
+                                scale=0.6,
+                                remove_on_dest=true
+                            }
+                        )
+                        return true 
+                    end,
+                }))
+                card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
+                G.E_MANAGER:add_event(Event({
+                    func = function()
+                        G.GAME.blind:juice_up(1,0.7)
+                        ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                        return true 
+                    end,
+                }))
             end
         end
     }, 
-    "j_barghest_arachnei", 
+    {
+        "j_barghest_arachnei"
+    }, -- TODO
     {
         id = "j_tsuchinoko_arachnei",
         name = "Tsuchinoko",
@@ -1355,8 +1384,31 @@ local tier_1_pets = {
         config = {extra={damage=100}},
         calculate_joker_effect = function(card, context)
             if context.ease_mana and card.config.center.key == "j_warg_arachnei" and card.ID == context.other_card.ID then
-                ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    func = function()
+                        move_particle(
+                            {x=card.T.x, y=card.T.y}, 
+                            {x=G.GAME.blind.T.x, y=G.GAME.blind.T.y}, 
+                            {
+                                speed=4,
+                                y_vel=-2,
+                                colour=G.C.WHITE,
+                                scale=0.6,
+                                remove_on_dest=true
+                            }
+                        )
+                        return true 
+                    end,
+                }))
                 card_eval_status_text(card, 'extra', nil, nil, nil, {message = "Blind Bitten!"})
+                G.E_MANAGER:add_event(Event({
+                    func = function()
+                        G.GAME.blind:juice_up(1,0.7)
+                        ease_blind_chips(-card.ability.extra.damage * get_level(card.ability.arachnei_sap.xp))
+                        return true 
+                    end,
+                }))
             end
         end
     }, 
@@ -1558,7 +1610,9 @@ local token_pets = {
         config={base_stats={mult=1, chips=1, xmult=1, xp=1, mana=0, trumpet=0}},
         
     }, 
-    "j_loyal_chinchilla_arachnei", "j_cracked_egg_arachnei", "j_dirty_rat_arachnei",
+    "j_loyal_chinchilla_arachnei", 
+    "j_cracked_egg_arachnei", 
+    "j_dirty_rat_arachnei",
     "j_lizard_tail_arachnei", "j_nest_arachnei", "j_daycrawler_arachnei", "j_ram_arachnei", "j_monty_arachnei", "j_smaller_slime_arachnei",
     "j_bus_arachnei", "j_butterfly_arachnei", "j_smaller_slug_arachnei", "j_smallest_slug", "j_chimeric_lion_arachnei", "j_chimeric_goat_arachnei",
     "j_chimeric_snake_arachnei", "j_giant_eyes_dog_arachnei", "j_chick_arachnei", "j_nessie?_arachnei", "j_zombie_fly_arachnei",
@@ -1701,33 +1755,34 @@ local chaos_toys = { "t_pandoras_box_arachnei", "t_evil_book_arachnei" }
 local king_toys = { "t_excalibur_arachnei", "t_holy_grail_arachnei" }
 
 local all_cards = {
+    -- TODO: commented
     {name="tier_1_pets", data=tier_1_pets},
-    {name="tier_2_pets", data=tier_2_pets},
-    {name="tier_3_pets", data=tier_3_pets},
-    {name="tier_4_pets", data=tier_4_pets},
-    {name="tier_5_pets", data=tier_5_pets},
-    {name="tier_6_pets", data=tier_6_pets},
+    -- {name="tier_2_pets", data=tier_2_pets},
+    -- {name="tier_3_pets", data=tier_3_pets},
+    -- {name="tier_4_pets", data=tier_4_pets},
+    -- {name="tier_5_pets", data=tier_5_pets},
+    -- {name="tier_6_pets", data=tier_6_pets},
     {name="token_pets", data=token_pets},
     {name="tier_1_foods", data=tier_1_foods},
-    {name="tier_2_foods", data=tier_2_foods},
-    {name="tier_3_foods", data=tier_3_foods},
-    {name="tier_4_foods", data=tier_4_foods},
-    {name="tier_5_foods", data=tier_5_foods},
-    {name="tier_6_foods", data=tier_6_foods},
+    -- {name="tier_2_foods", data=tier_2_foods},
+    -- {name="tier_3_foods", data=tier_3_foods},
+    -- {name="tier_4_foods", data=tier_4_foods},
+    -- {name="tier_5_foods", data=tier_5_foods},
+    -- {name="tier_6_foods", data=tier_6_foods},
     {name="special_foods", data=special_foods},
-    {name="tier_1_toys", data=tier_1_toys},
-    {name="tier_2_toys", data=tier_2_toys},
-    {name="tier_3_toys", data=tier_3_toys},
-    {name="tier_4_toys", data=tier_4_toys},
-    {name="tier_5_toys", data=tier_5_toys},
-    {name="tier_6_toys", data=tier_6_toys},
-    {name="witch_toys", data=witch_toys},
-    {name="adventurous_toys", data=adventurous_toys},
-    {name="treasure_toys", data=treasure_toys},
-    {name="wondrous_toys", data=wondrous_toys},
-    {name="nostalgic_toys", data=nostalgic_toys},
-    {name="chaos_toys", data=chaos_toys},
-    {name="king_toys", data=king_toys},
+    -- {name="tier_1_toys", data=tier_1_toys},
+    -- {name="tier_2_toys", data=tier_2_toys},
+    -- {name="tier_3_toys", data=tier_3_toys},
+    -- {name="tier_4_toys", data=tier_4_toys},
+    -- {name="tier_5_toys", data=tier_5_toys},
+    -- {name="tier_6_toys", data=tier_6_toys},
+    -- {name="witch_toys", data=witch_toys},
+    -- {name="adventurous_toys", data=adventurous_toys},
+    -- {name="treasure_toys", data=treasure_toys},
+    -- {name="wondrous_toys", data=wondrous_toys},
+    -- {name="nostalgic_toys", data=nostalgic_toys},
+    -- {name="chaos_toys", data=chaos_toys},
+    -- {name="king_toys", data=king_toys},
 }
 
 
@@ -1799,7 +1854,7 @@ local function on_enable()
 
     -- add
     if not G.ARGS.LOC_COLOURS then
-        loc_colour(red)
+        loc_colour(nil)
     end
     G.ARGS.LOC_COLOURS.mana_arachneisapets = G.C.MANA_ARACHNEISAPETS
     G.ARGS.LOC_COLOURS.food_arachneisapets = G.C.FOOD_ARACHNEISAPETS
@@ -1831,6 +1886,17 @@ local function on_enable()
     end
 end
 
-return {
-    on_enable = on_enable
-}
+-- balamod apis
+local joker = nil
+local consumable = nil
+local utils = nil
+if balamod_exists then
+    joker = require("joker")
+    consumable = require("consumable")
+    utils = require("utils")
+    return {
+        on_enable = on_enable
+    }
+end
+
+
